@@ -236,8 +236,10 @@ func (s *trayState) continueSession(name string, session sessions.Session) {
 }
 
 func (s *trayState) switchAndContinue(name, label, link string) {
-	err := switchProfileFromTray(name, s.store, s.platform, s.launchPath())
+	card := startTerminalCard("claude continue "+label, "closing Claude", 0.04)
+	err := switchProfileFromTray(name, s.store, s.platform, card, s.cachedProfileDisplayName)
 	if err != nil {
+		card.Close()
 		s.endSwitch()
 		if errors.Is(err, errLiveSessionUnrecognized) || errors.Is(err, errLiveSessionUnverified) {
 			s.setStatus("Continue skipped: the open Claude account could not be identified; no profiles were changed")
@@ -249,8 +251,11 @@ func (s *trayState) switchAndContinue(name, label, link string) {
 		return
 	}
 	s.setTrustedActiveProfile(name)
-	card := startNativeOverlay("Opening the session...", false, s.launchPath())
+	card.Step("opening the session", 0.95)
 	err = openSessionWhenClaudeIsReady(s.platform, link)
+	if err == nil {
+		card.Step("session opened", 1)
+	}
 	time.Sleep(sessionOpeningCardTime)
 	card.Close()
 	s.endSwitch()

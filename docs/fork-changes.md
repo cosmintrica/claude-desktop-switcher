@@ -155,6 +155,63 @@ still counts as the main window. Guarding tests: `TestMainInstance*`,
 `TestSeparateDataFolderLooksOnlyAtArguments`,
 `TestProcessCommandLineReadsARunningProcess`.
 
+### Groups as in Claude's sidebar
+
+The menu groups each account's sessions the way Claude's sidebar does. Groups
+the user made come first, in sidebar order: `claude_desktop_config.json`,
+`preferences.epitaxyPrefs`, `dframe-group-scopes` and `dframe-code-sections`,
+keyed by account and organization. Nothing else is read from that file. The
+other sessions are grouped by repository and named after the origin Claude
+pinned for it, its origin URL, or its folder (`git-worktrees.json`,
+`originPins` and `originUrls`), alphabetically. A side session sits under the
+session that started it, except in groups the user made. Guarding tests:
+`TestRecentGroupsSessionsLikeClaudesSidebar`,
+`TestSessionMenuEntriesFollowTheSidebar`.
+
+### A terminal progress card
+
+The progress card is now a short terminal session that floats over the screen
+with no background. The command types itself (`claude switch <account>`,
+`claude continue <account>`, `claude open`, `claude quit`, `claude backup`,
+`claude window <account>`, `claude account add`). A bar fills with the real
+steps of the operation: closing Claude, saving the outgoing account, restoring
+the incoming one, opening Claude, opening the session. The current step is
+centered below the bar, and all three lines share one width. The window is
+layered with per-pixel alpha (`UpdateLayeredWindow`), and a dark outline keeps
+the text readable over light and dark windows. The font is Cascadia Mono where
+Windows has it, else Consolas. Guarding tests: `TestTerminalCard*`,
+`TestPartialCell`, `TestCardSteps*`.
+
+### Open an account in a separate window
+
+**Open in a separate window** starts a second Claude Desktop beside the main
+one, signed in to the chosen account. It runs the Store package's `Claude.exe`,
+found from the installed package each time (`GetPackagesByPackageFamily` and
+`AppxManifest.xml`), with `--user-data-dir=%LOCALAPPDATA%\Claude-Accounts\<profile>`.
+That folder sits outside the package's redirected Roaming folder, and Claude
+keeps its package identity. The first time, the window opens signed out and
+the user signs in with **Sign in with code**. Sign-ins and cookies are never
+copied between folders. The menu marks an open window, greys out the account
+in the main window, and warns when another account is signed in to a window.
+Limits: `claude://` links (connector sign-ins, "Open in Claude") always reach
+the main window, there is no Cowork VM in a separate window, each window keeps
+its own copy of Claude Code, and each uses about 1.5-2 GB of memory. Guarding
+tests: `TestSeparateMenuState`, `TestSeparateWindowFolderSitsOutsideTheStorePackage`,
+`TestManifestExecutableStaysInsideThePackage`,
+`TestClaudeExecutableFromTheInstalledPackage`.
+
+### Verification of the third round
+
+- gofmt, `go mod tidy -diff`, `go vet ./...` and all package tests pass;
+  golangci-lint 2.15.0 reports 0 issues; govulncheck 1.6.0 finds no reachable
+  vulnerability.
+- Live with Claude Desktop 2.42304 on 2026-10-19, with a separate test window
+  open (started with its own `--user-data-dir`): **Close Claude Desktop** listed
+  the busy sessions and asked first; the separate window stayed open through
+  that close and through a switch; **Continue a session** switched to the other
+  account and opened the chosen session, then switched back and opened the
+  first one.
+
 ## Running a local build
 
 1. Build with `.\scripts\project.ps1 -Task Build -Arch amd64 -Version <version>`,

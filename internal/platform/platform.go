@@ -26,6 +26,13 @@ type LoginWindowObserver interface {
 	LoginWindowVisible() (bool, error)
 }
 
+// SeparateWindowRunner runs Claude Desktop windows beside the main one, each
+// with its own data folder and sign-in.
+type SeparateWindowRunner interface {
+	SeparateWindows() (map[string]bool, error)
+	OpenSeparateWindow(folder string) error
+}
+
 // Current returns the Platform implementation for the running OS.
 func Current() Platform {
 	return current()

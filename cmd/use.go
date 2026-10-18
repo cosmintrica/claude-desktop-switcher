@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/TinoA/claude-desktop-switcher/internal/platform"
@@ -74,15 +76,49 @@ func switchProfile(name string, store *profile.Store) error {
 		return err
 	}
 	defer lock.Release()
-	overlay := startSwitchOverlay()
+	overlay := startSwitchOverlay(name)
 	defer overlay.Close()
-	err = switchProfileWith(name, store, platform.Current(), os.Stdout)
+	err = switchProfileWith(name, store, platform.Current(), io.MultiWriter(os.Stdout, cardSteps{card: overlay, label: func(name string) string { return name }}))
 	if err == nil {
 		if pending, pendingErr := loadPendingAdd(); pendingErr == nil && pending.Previous == name {
 			_ = clearPendingAdd()
 		}
 	}
 	return err
+}
+
+type progressCard interface {
+	Step(step string, progress float64)
+}
+
+// cardSteps turns switchProfileWith's progress lines into the steps of the
+// progress card, with each profile shown by its account label.
+type cardSteps struct {
+	card  progressCard
+	label func(string) string
+}
+
+func (c cardSteps) Write(data []byte) (int, error) {
+	line := strings.TrimSpace(string(data))
+	name := ""
+	if start, end := strings.IndexByte(line, '"'), strings.LastIndexByte(line, '"'); start >= 0 && end > start {
+		if unquoted, err := strconv.Unquote(line[start : end+1]); err == nil {
+			name = c.label(unquoted)
+		}
+	}
+	switch {
+	case strings.HasPrefix(line, "Stopping Claude"):
+		c.card.Step("closing Claude", 0.15)
+	case strings.HasPrefix(line, "Checkpointing profile"):
+		c.card.Step("saving "+name, 0.35)
+	case strings.HasPrefix(line, "Restoring profile"):
+		c.card.Step("restoring "+name, 0.55)
+	case strings.HasPrefix(line, "Starting Claude"):
+		c.card.Step("opening Claude", 0.75)
+	case strings.HasPrefix(line, "Switched to"), strings.HasSuffix(line, "is already active."):
+		c.card.Step("signed in", 0.9)
+	}
+	return len(data), nil
 }
 
 type switchStore interface {

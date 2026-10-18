@@ -211,7 +211,7 @@ func (s *trayState) handleAdd() {
 		}
 		s.add.Disable()
 		s.claude.Disable()
-		preparation := startAddPreparationOverlay(s.launchPath())
+		preparation := startAddPreparationOverlay()
 		workflow, err := newAddWorkflow(s.store, s.platform)
 		if err == nil {
 			lock, lockErr := acquireOperationLock("operation")
@@ -285,7 +285,7 @@ func (s *trayState) toggleClaudeDesktop() {
 	}
 	if running {
 		s.setStatus("Closing Claude Desktop...")
-		overlay := startNativeOverlay("Closing Claude Desktop...", false, s.launchPath())
+		overlay := startTerminalCard("claude quit", "closing Claude", 0.1)
 		err = s.platform.KillApp()
 		overlay.Close()
 		lock.Release()
@@ -301,18 +301,20 @@ func (s *trayState) toggleClaudeDesktop() {
 	}
 
 	s.setStatus("Opening Claude Desktop...")
-	overlay := startNativeOverlay("Opening Claude Desktop...", false, s.launchPath())
 	openedProfile := ""
 	current, _ := s.store.Current()
 	if current != "" && s.store.Exists(current) && s.store.Inspect(current).Health == profile.HealthUsable {
-		err = switchProfileWith(current, s.store, s.platform, io.Discard)
+		overlay := startTerminalCard("claude open "+s.cachedProfileDisplayName(current), "restoring the account", 0.1)
+		err = switchProfileWith(current, s.store, s.platform, cardSteps{card: overlay, label: s.cachedProfileDisplayName})
+		overlay.Close()
 		if err == nil {
 			openedProfile = current
 		}
 	} else {
+		overlay := startTerminalCard("claude open", "opening Claude", 0.1)
 		err = s.platform.LaunchApp()
+		overlay.Close()
 	}
-	overlay.Close()
 	lock.Release()
 	if openedProfile != "" {
 		s.setTrustedActiveProfile(openedProfile)
@@ -356,7 +358,7 @@ func (s *trayState) handleBackupExport(item *systray.MenuItem, local bool) {
 		}
 		go func(path, password string, local bool) {
 			lock, lockErr := acquireOperationLock("operation")
-			preparation := startBackupPreparationOverlay(s.launchPath())
+			preparation := startBackupPreparationOverlay()
 			if lockErr == nil {
 				lockErr = prepareBackupProfiles(s.store, s.platform, s.resolveBackupProfile, io.Discard)
 				if lockErr == nil {
@@ -597,7 +599,7 @@ func (s *trayState) confirmLoginWindowClose(workflow *addWorkflow, p platform.Pl
 }
 
 func restartLoginWindow(workflow *addWorkflow, p platform.Platform) error {
-	overlay := startLoginReopenOverlay(platformLaunchPath(p))
+	overlay := startLoginReopenOverlay()
 	defer overlay.Close()
 	if err := restartLoginProcess(workflow, p); err != nil {
 		return err
@@ -737,7 +739,7 @@ func (s *trayState) autoComplete(workflow *addWorkflow) {
 		if lookupErr != nil {
 			err = lookupErr
 		} else if existing != "" {
-			progress := startAddCompletionOverlay(platformLaunchPath(workflow.platform))
+			progress := startAddCompletionOverlay()
 			handled, err = workflow.RecoverPendingDuplicate()
 			progress.Close()
 		}
@@ -790,14 +792,13 @@ func (s *trayState) autoComplete(workflow *addWorkflow) {
 }
 
 func completeWithSuccessOverlay(workflow *addWorkflow) error {
-	iconPath := platformLaunchPath(workflow.platform)
-	progress := startAddCompletionOverlay(iconPath)
+	progress := startAddCompletionOverlay()
 	err := workflow.Complete()
 	progress.Close()
 	if err != nil {
 		return err
 	}
-	success := startAddSuccessOverlay(iconPath)
+	success := startAddSuccessOverlay()
 	defer success.Close()
 	time.Sleep(1500 * time.Millisecond)
 	return nil
@@ -971,7 +972,7 @@ func (s *trayState) saveInitialDetectedAccount(running bool) {
 		return
 	}
 	defer lock.Release()
-	preparation := startInitialAccountSaveOverlay(s.launchPath())
+	preparation := startInitialAccountSaveOverlay()
 	err = s.saveDetectedProfile(name)
 	preparation.Close()
 	if err != nil {
@@ -1399,17 +1400,6 @@ func (s *trayState) setTrustedActiveProfile(name string) {
 	s.mu.Unlock()
 }
 
-func platformLaunchPath(p platform.Platform) string {
-	if provider, ok := p.(interface{ LaunchPath() string }); ok {
-		return provider.LaunchPath()
-	}
-	return ""
-}
-
-func (s *trayState) launchPath() string {
-	return platformLaunchPath(s.platform)
-}
-
 func (s *trayState) watchAccount(item *systray.MenuItem, name string, stop <-chan struct{}) {
 	for {
 		select {
@@ -1435,7 +1425,9 @@ func (s *trayState) watchAccount(item *systray.MenuItem, name string, stop <-cha
 		}
 		s.setStatus("Switching to " + label + "...")
 		go func() {
-			err := switchProfileFromTray(name, s.store, s.platform, s.launchPath())
+			card := startSwitchOverlay(label)
+			err := switchProfileFromTray(name, s.store, s.platform, card, s.cachedProfileDisplayName)
+			card.Close()
 			if err == nil {
 				s.setTrustedActiveProfile(name)
 			}
@@ -1454,15 +1446,13 @@ func (s *trayState) watchAccount(item *systray.MenuItem, name string, stop <-cha
 	}
 }
 
-func switchProfileFromTray(name string, store *profile.Store, p platform.Platform, iconPath string) error {
+func switchProfileFromTray(name string, store *profile.Store, p platform.Platform, card *switchOverlay, label func(string) string) error {
 	lock, err := acquireOperationLock("operation")
 	if err != nil {
 		return err
 	}
 	defer lock.Release()
-	overlay := startSwitchOverlay(iconPath)
-	defer overlay.Close()
-	err = switchProfileWith(name, store, p, io.Discard)
+	err = switchProfileWith(name, store, p, cardSteps{card: card, label: label})
 	if err == nil {
 		if pending, pendingErr := loadPendingAdd(); pendingErr == nil && pending.Previous == name {
 			_ = clearPendingAdd()

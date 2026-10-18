@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -172,5 +173,81 @@ func TestShowCommandKeepsAMaximizedWindowMaximized(t *testing.T) {
 func TestEnumTopLevelWindowsCanRunMoreTimesThanGoAllowsCallbacks(t *testing.T) {
 	for range 2500 {
 		enumTopLevelWindows(func(uintptr) bool { return false })
+	}
+}
+
+func TestMainInstanceIgnoresClaudeWindowsWithTheirOwnDataFolder(t *testing.T) {
+	processes := []windowsProcess{
+		{pid: 100, parent: 4},
+		{pid: 101, parent: 100},
+		{pid: 102, parent: 100},
+		{pid: 103, parent: 102},
+		{pid: 200, parent: 50},
+		{pid: 201, parent: 200},
+		{pid: 202, parent: 201},
+		{pid: 300, parent: 777},
+	}
+	var asked []int
+	got := mainInstanceProcesses(processes, func(pid int) bool {
+		asked = append(asked, pid)
+		return pid == 200
+	})
+	var pids []int
+	for _, process := range got {
+		pids = append(pids, process.pid)
+	}
+	if want := []int{100, 101, 102, 103, 300}; !reflect.DeepEqual(pids, want) {
+		t.Fatalf("main window processes = %v, want %v", pids, want)
+	}
+	if want := []int{100, 200, 300}; !reflect.DeepEqual(asked, want) {
+		t.Fatalf("command lines read for %v, want only the roots %v", asked, want)
+	}
+}
+
+func TestMainInstanceSurvivesAParentLoop(t *testing.T) {
+	processes := []windowsProcess{{pid: 1, parent: 2}, {pid: 2, parent: 1}}
+	if got := mainInstanceProcesses(processes, func(int) bool { return false }); len(got) != 2 {
+		t.Fatalf("processes = %v", got)
+	}
+}
+
+func TestSeparateDataFolderLooksOnlyAtArguments(t *testing.T) {
+	home := t.TempDir()
+	mainFolder := filepath.Join(home, "Packages", "Claude_pzs8sxrjxfjjc", "LocalCache", "Roaming", "Claude")
+	virtualFolder := filepath.Join(home, "Roaming", "Claude")
+	executable := filepath.Join(home, "WindowsApps", "Claude_2.42304.0.0_x64__pzs8sxrjxfjjc", "app", "Claude.exe")
+	quoted := func(value string) string { return `"` + value + `"` }
+	tests := []struct {
+		name        string
+		commandLine string
+		want        bool
+	}{
+		{"main window", quoted(executable), false},
+		{"separate window", quoted(executable) + " --user-data-dir=" + quoted(filepath.Join(home, "Claude-Accounts", "Main-account")), true},
+		{"main window helper", quoted(executable) + " --type=renderer --user-data-dir=" + quoted(virtualFolder) + " --lang=en-US", false},
+		{"main folder in capitals", quoted(executable) + " --user-data-dir=" + quoted(strings.ToUpper(mainFolder)), false},
+		{"deep link", quoted(executable) + " claude://code/continue?session=local_1", false},
+		{"flag inside the program path", quoted(filepath.Join(home, "--user-data-dir=x", "Claude.exe")), false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := separateDataFolder(test.commandLine, mainFolder, virtualFolder); got != test.want {
+				t.Fatalf("separateDataFolder(%q) = %v, want %v", test.commandLine, got, test.want)
+			}
+		})
+	}
+}
+
+func TestProcessCommandLineReadsARunningProcess(t *testing.T) {
+	commandLine, err := processCommandLine(uint32(os.Getpid()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.ToLower(commandLine), strings.ToLower(filepath.Base(executable))) {
+		t.Fatalf("command line %q does not name %s", commandLine, filepath.Base(executable))
 	}
 }

@@ -460,7 +460,88 @@ func (w *windowsPlatform) desktopProcesses() ([]windowsProcess, error) {
 			return nil, err
 		}
 	}
-	return processes, nil
+	return mainInstanceProcesses(processes, w.startedAsSeparateWindow), nil
+}
+
+// Claude windows started with their own --user-data-dir run beside the main
+// one. Their helper processes carry that flag, and so do the main window's, so
+// each process is judged by the root of its Claude process tree.
+func mainInstanceProcesses(processes []windowsProcess, separate func(pid int) bool) []windowsProcess {
+	byPID := make(map[int]windowsProcess, len(processes))
+	for _, process := range processes {
+		byPID[process.pid] = process
+	}
+	separateRoots := make(map[int]bool)
+	main := make([]windowsProcess, 0, len(processes))
+	for _, process := range processes {
+		root := process
+		for range processes {
+			parent, ok := byPID[root.parent]
+			if !ok || parent.pid == root.pid {
+				break
+			}
+			root = parent
+		}
+		isSeparate, known := separateRoots[root.pid]
+		if !known {
+			isSeparate = separate(root.pid)
+			separateRoots[root.pid] = isSeparate
+		}
+		if !isSeparate {
+			main = append(main, process)
+		}
+	}
+	return main
+}
+
+// A command line that cannot be read counts as the main window, as every
+// Claude process did before separate windows were recognized.
+func (w *windowsPlatform) startedAsSeparateWindow(pid int) bool {
+	commandLine, err := processCommandLine(uint32(pid))
+	if err != nil {
+		return false
+	}
+	return separateDataFolder(commandLine, w.root, filepath.Join(os.Getenv("APPDATA"), "Claude"))
+}
+
+func separateDataFolder(commandLine string, mainFolders ...string) bool {
+	args, err := windows.DecomposeCommandLine(commandLine)
+	if err != nil || len(args) < 2 {
+		return false
+	}
+	for _, arg := range args[1:] {
+		folder, found := strings.CutPrefix(arg, "--user-data-dir=")
+		if !found {
+			continue
+		}
+		for _, mainFolder := range mainFolders {
+			if mainFolder != "" && normalizeWindowsPath(folder) == normalizeWindowsPath(mainFolder) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+func processCommandLine(pid uint32) (string, error) {
+	process, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+	if err != nil {
+		return "", err
+	}
+	defer windows.CloseHandle(process)
+	size := uint32(1024)
+	for range 4 {
+		buffer := make([]uint64, (size+7)/8)
+		err = windows.NtQueryInformationProcess(process, windows.ProcessCommandLineInformation, unsafe.Pointer(&buffer[0]), uint32(len(buffer)*8), &size)
+		if err == nil {
+			return (*windows.NTUnicodeString)(unsafe.Pointer(&buffer[0])).String(), nil
+		}
+		if !errors.Is(err, windows.STATUS_INFO_LENGTH_MISMATCH) && !errors.Is(err, windows.STATUS_BUFFER_TOO_SMALL) && !errors.Is(err, windows.STATUS_BUFFER_OVERFLOW) {
+			return "", err
+		}
+	}
+	return "", errors.New("process command line kept growing")
 }
 
 func (w *windowsPlatform) ownsProcess(path string) bool {

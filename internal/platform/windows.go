@@ -4,6 +4,7 @@ package platform
 
 import (
 	"context"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unsafe"
 
@@ -378,6 +380,8 @@ var (
 	windowsPostMessage         = windowsMainWindowAPI.NewProc("PostMessageW")
 	windowsIsIconic            = windowsMainWindowAPI.NewProc("IsIconic")
 	windowsGetCurrentThreadID  = windowsKernel32.NewProc("GetCurrentThreadId")
+	windowsGetPackagesByFamily = windowsKernel32.NewProc("GetPackagesByPackageFamily")
+	windowsGetPackagePath      = windowsKernel32.NewProc("GetPackagePathByFullName")
 )
 
 func detectWindowsInstallCached() (windowsInstall, []windowsInstall) {
@@ -432,6 +436,14 @@ type windowsProcess struct {
 }
 
 func (w *windowsPlatform) desktopProcesses() ([]windowsProcess, error) {
+	processes, err := w.claudeProcesses()
+	if err != nil {
+		return nil, err
+	}
+	return mainInstanceProcesses(processes, w.startedAsSeparateWindow), nil
+}
+
+func (w *windowsPlatform) claudeProcesses() ([]windowsProcess, error) {
 	if w.executable == "" && !w.msix {
 		return nil, nil
 	}
@@ -460,19 +472,36 @@ func (w *windowsPlatform) desktopProcesses() ([]windowsProcess, error) {
 			return nil, err
 		}
 	}
-	return mainInstanceProcesses(processes, w.startedAsSeparateWindow), nil
+	return processes, nil
 }
 
 // Claude windows started with their own --user-data-dir run beside the main
 // one. Their helper processes carry that flag, and so do the main window's, so
 // each process is judged by the root of its Claude process tree.
 func mainInstanceProcesses(processes []windowsProcess, separate func(pid int) bool) []windowsProcess {
+	roots := claudeRoots(processes)
+	separateRoots := make(map[int]bool)
+	main := make([]windowsProcess, 0, len(processes))
+	for _, process := range processes {
+		root := roots[process.pid]
+		isSeparate, known := separateRoots[root]
+		if !known {
+			isSeparate = separate(root)
+			separateRoots[root] = isSeparate
+		}
+		if !isSeparate {
+			main = append(main, process)
+		}
+	}
+	return main
+}
+
+func claudeRoots(processes []windowsProcess) map[int]int {
 	byPID := make(map[int]windowsProcess, len(processes))
 	for _, process := range processes {
 		byPID[process.pid] = process
 	}
-	separateRoots := make(map[int]bool)
-	main := make([]windowsProcess, 0, len(processes))
+	roots := make(map[int]int, len(processes))
 	for _, process := range processes {
 		root := process
 		for range processes {
@@ -482,32 +511,29 @@ func mainInstanceProcesses(processes []windowsProcess, separate func(pid int) bo
 			}
 			root = parent
 		}
-		isSeparate, known := separateRoots[root.pid]
-		if !known {
-			isSeparate = separate(root.pid)
-			separateRoots[root.pid] = isSeparate
-		}
-		if !isSeparate {
-			main = append(main, process)
-		}
+		roots[process.pid] = root.pid
 	}
-	return main
+	return roots
 }
 
 // A command line that cannot be read counts as the main window, as every
 // Claude process did before separate windows were recognized.
 func (w *windowsPlatform) startedAsSeparateWindow(pid int) bool {
+	return w.separateFolderOf(pid) != ""
+}
+
+func (w *windowsPlatform) separateFolderOf(pid int) string {
 	commandLine, err := processCommandLine(uint32(pid))
 	if err != nil {
-		return false
+		return ""
 	}
 	return separateDataFolder(commandLine, w.root, filepath.Join(os.Getenv("APPDATA"), "Claude"))
 }
 
-func separateDataFolder(commandLine string, mainFolders ...string) bool {
+func separateDataFolder(commandLine string, mainFolders ...string) string {
 	args, err := windows.DecomposeCommandLine(commandLine)
 	if err != nil || len(args) < 2 {
-		return false
+		return ""
 	}
 	for _, arg := range args[1:] {
 		folder, found := strings.CutPrefix(arg, "--user-data-dir=")
@@ -516,12 +542,129 @@ func separateDataFolder(commandLine string, mainFolders ...string) bool {
 		}
 		for _, mainFolder := range mainFolders {
 			if mainFolder != "" && normalizeWindowsPath(folder) == normalizeWindowsPath(mainFolder) {
-				return false
+				return ""
 			}
 		}
-		return true
+		return folder
 	}
-	return false
+	return ""
+}
+
+// SeparateWindows reports the data folders, lower-cased, of the Claude windows
+// running beside the main one.
+func (w *windowsPlatform) SeparateWindows() (map[string]bool, error) {
+	processes, err := w.claudeProcesses()
+	if err != nil {
+		return nil, err
+	}
+	roots := claudeRoots(processes)
+	open := make(map[string]bool)
+	checked := make(map[int]bool)
+	for _, process := range processes {
+		root := roots[process.pid]
+		if checked[root] {
+			continue
+		}
+		checked[root] = true
+		if folder := w.separateFolderOf(root); folder != "" {
+			open[normalizeWindowsPath(folder)] = true
+		}
+	}
+	return open, nil
+}
+
+// OpenSeparateWindow starts Claude Desktop beside the main window with its own
+// data folder. When a window with that folder already runs, Claude hands the
+// new start to it and brings it forward.
+func (w *windowsPlatform) OpenSeparateWindow(folder string) error {
+	executable, err := w.claudeExecutable()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(folder, 0o700); err != nil {
+		return err
+	}
+	command := exec.Command(executable, "--user-data-dir="+folder)
+	command.Dir = filepath.Dir(executable)
+	// Claude.exe can open a console for its diagnostics; the window itself must
+	// start visible, so no hidden-window flag is set.
+	command.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NO_WINDOW}
+	if err := command.Start(); err != nil {
+		return err
+	}
+	return command.Process.Release()
+}
+
+// The Store package's folder carries its version, so the executable is looked
+// up from the installed package each time.
+func (w *windowsPlatform) claudeExecutable() (string, error) {
+	if !w.msix {
+		if w.executable == "" {
+			return "", errors.New("claude desktop executable was not detected")
+		}
+		return w.executable, nil
+	}
+	root, err := packageInstallPath(windowsPackageFamily)
+	if err != nil {
+		return "", err
+	}
+	manifest, err := os.ReadFile(filepath.Join(root, "AppxManifest.xml"))
+	if err != nil {
+		return "", err
+	}
+	executable, err := manifestExecutable(manifest, "Claude")
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, executable), nil
+}
+
+func manifestExecutable(manifest []byte, id string) (string, error) {
+	var parsed struct {
+		Applications []struct {
+			ID         string `xml:"Id,attr"`
+			Executable string `xml:"Executable,attr"`
+		} `xml:"Applications>Application"`
+	}
+	if err := xml.Unmarshal(manifest, &parsed); err != nil {
+		return "", err
+	}
+	for _, application := range parsed.Applications {
+		executable := filepath.Clean(application.Executable)
+		if application.ID == id && application.Executable != "" && !filepath.IsAbs(executable) && !strings.HasPrefix(executable, "..") {
+			return executable, nil
+		}
+	}
+	return "", fmt.Errorf("the Claude package does not name the %s executable", id)
+}
+
+func packageInstallPath(family string) (string, error) {
+	familyName, err := windows.UTF16PtrFromString(family)
+	if err != nil {
+		return "", err
+	}
+	var count, length uint32
+	windowsGetPackagesByFamily.Call(uintptr(unsafe.Pointer(familyName)), uintptr(unsafe.Pointer(&count)), 0, uintptr(unsafe.Pointer(&length)), 0)
+	if count == 0 || length == 0 {
+		return "", errors.New("the Claude package is not installed")
+	}
+	names := make([]*uint16, count)
+	buffer := make([]uint16, length)
+	if result, _, _ := windowsGetPackagesByFamily.Call(uintptr(unsafe.Pointer(familyName)), uintptr(unsafe.Pointer(&count)), uintptr(unsafe.Pointer(&names[0])), uintptr(unsafe.Pointer(&length)), uintptr(unsafe.Pointer(&buffer[0]))); result != 0 {
+		return "", syscall.Errno(result)
+	}
+	for _, name := range names[:count] {
+		var pathLength uint32
+		windowsGetPackagePath.Call(uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(&pathLength)), 0)
+		if pathLength == 0 {
+			continue
+		}
+		path := make([]uint16, pathLength)
+		if result, _, _ := windowsGetPackagePath.Call(uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(&pathLength)), uintptr(unsafe.Pointer(&path[0]))); result == 0 {
+			return windows.UTF16ToString(path), nil
+		}
+	}
+	return "", errors.New("the Claude package folder was not found")
 }
 
 func processCommandLine(pid uint32) (string, error) {

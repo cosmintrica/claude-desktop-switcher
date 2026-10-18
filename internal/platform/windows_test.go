@@ -217,22 +217,23 @@ func TestSeparateDataFolderLooksOnlyAtArguments(t *testing.T) {
 	virtualFolder := filepath.Join(home, "Roaming", "Claude")
 	executable := filepath.Join(home, "WindowsApps", "Claude_2.42304.0.0_x64__pzs8sxrjxfjjc", "app", "Claude.exe")
 	quoted := func(value string) string { return `"` + value + `"` }
+	separate := filepath.Join(home, "Claude-Accounts", "Main-account")
 	tests := []struct {
 		name        string
 		commandLine string
-		want        bool
+		want        string
 	}{
-		{"main window", quoted(executable), false},
-		{"separate window", quoted(executable) + " --user-data-dir=" + quoted(filepath.Join(home, "Claude-Accounts", "Main-account")), true},
-		{"main window helper", quoted(executable) + " --type=renderer --user-data-dir=" + quoted(virtualFolder) + " --lang=en-US", false},
-		{"main folder in capitals", quoted(executable) + " --user-data-dir=" + quoted(strings.ToUpper(mainFolder)), false},
-		{"deep link", quoted(executable) + " claude://code/continue?session=local_1", false},
-		{"flag inside the program path", quoted(filepath.Join(home, "--user-data-dir=x", "Claude.exe")), false},
+		{"main window", quoted(executable), ""},
+		{"separate window", quoted(executable) + " --user-data-dir=" + quoted(separate), separate},
+		{"main window helper", quoted(executable) + " --type=renderer --user-data-dir=" + quoted(virtualFolder) + " --lang=en-US", ""},
+		{"main folder in capitals", quoted(executable) + " --user-data-dir=" + quoted(strings.ToUpper(mainFolder)), ""},
+		{"deep link", quoted(executable) + " claude://code/continue?session=local_1", ""},
+		{"flag inside the program path", quoted(filepath.Join(home, "--user-data-dir=x", "Claude.exe")), ""},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			if got := separateDataFolder(test.commandLine, mainFolder, virtualFolder); got != test.want {
-				t.Fatalf("separateDataFolder(%q) = %v, want %v", test.commandLine, got, test.want)
+				t.Fatalf("separateDataFolder(%q) = %q, want %q", test.commandLine, got, test.want)
 			}
 		})
 	}
@@ -249,5 +250,36 @@ func TestProcessCommandLineReadsARunningProcess(t *testing.T) {
 	}
 	if !strings.Contains(strings.ToLower(commandLine), strings.ToLower(filepath.Base(executable))) {
 		t.Fatalf("command line %q does not name %s", commandLine, filepath.Base(executable))
+	}
+}
+
+func TestManifestExecutableStaysInsideThePackage(t *testing.T) {
+	manifest := []byte(`<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+  <Applications>
+    <Application Id="SshProxy" Executable="app/resources/claude-ssh-proxy.exe" EntryPoint="Windows.FullTrustApplication"/>
+    <Application Id="Claude" Executable="app/Claude.exe" EntryPoint="Windows.FullTrustApplication"/>
+  </Applications>
+</Package>`)
+	got, err := manifestExecutable(manifest, "Claude")
+	if err != nil || got != filepath.Join("app", "Claude.exe") {
+		t.Fatalf("manifestExecutable = %q, %v", got, err)
+	}
+	escaping := []byte(`<Package><Applications><Application Id="Claude" Executable="../../evil.exe"/></Applications></Package>`)
+	if got, err := manifestExecutable(escaping, "Claude"); err == nil {
+		t.Fatalf("an executable outside the package was accepted: %q", got)
+	}
+}
+
+func TestClaudeExecutableFromTheInstalledPackage(t *testing.T) {
+	if _, err := packageInstallPath(windowsPackageFamily); err != nil {
+		t.Skip("Claude Desktop from the Store is not installed here")
+	}
+	executable, err := (&windowsPlatform{msix: true}).claudeExecutable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(executable); err != nil || info.IsDir() || !strings.EqualFold(filepath.Base(executable), processName) {
+		t.Fatalf("executable %q: %v", executable, err)
 	}
 }

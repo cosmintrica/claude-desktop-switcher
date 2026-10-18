@@ -10,6 +10,7 @@ installer releases; the builds were made locally from source.
 | `main` | Everything below, plus this page |
 | `fix/stable-switching` | The code and documentation changes for the original project |
 | `codex/harden-profile-import-and-rollback` | The first round, proposed in [OpenScz/claude-desktop-switcher#16](https://github.com/OpenScz/claude-desktop-switcher/pull/16) |
+| `feat/account-sessions` | The third round, the **Continue a session** menu |
 
 ## First round: profile import and rollback (2026-10-18)
 
@@ -84,6 +85,51 @@ the cleanup starts and is cut off. That attempt was reverted.
 Claude Desktop keeps Claude Code session records per account. A session
 record copied to another account can report that its branch is checked out in
 another folder, because each worktree folder is leased to one record id.
+
+## Third round: continue a session on its account (2026-10-18)
+
+Claude Desktop keeps each account's Claude Code sessions apart
+(`claude-code-sessions\<account>\<organization>\local_*.json`), and a session
+opens only on the account that owns its record. Moving between accounts meant
+remembering where each piece of work lived.
+
+The tray has a new **Continue a session** menu. Under each saved account it
+lists that account's 10 most recent sessions, grouped by project folder, with
+the time of their last activity. Clicking one opens it on its account:
+
+- On the account already open in Claude, Claude comes to the front with the
+  session.
+- On another account, the switcher asks first (Claude closes and reopens, and
+  work running on the current account stops), switches, waits for Claude's
+  window and opens `claude://code/continue?session=<id>`. Claude 2.42304
+  accepts only ids made of `local_` and up to 64 letters, digits and dashes,
+  and opens the session only if the account in use owns it and it is not
+  archived.
+
+Which account lists a session:
+
+- A record belongs to a saved account when the SHA-256 of its account folder
+  name equals the profile's `account_uuid_hash`.
+- Records copied between accounts share one `cliSessionId`. Each conversation
+  is listed once, under the account whose record was active most recently.
+  Exact copies tie on activity time; the account open in Claude wins the tie,
+  then the menu order.
+- Claude reserves each worktree folder for one record (`leasedBy` in
+  `git-worktrees.json`) and opens any other record of that folder in a fresh
+  worktree on the record's old branch, so only the record holding the folder
+  is listed.
+- Archived sessions, scheduled-task runs, sessions without a transcript and
+  sessions whose folder no longer exists are left out.
+
+The menu refreshes with the rest of the tray every 10 seconds, and only records
+whose size or modification time changed are read again. Records are opened with
+`FILE_SHARE_DELETE`, so Claude can delete one while the switcher reads it. A
+replacement that meets an open record fails for a moment; Claude's own writer
+retries it after 50 and 100 ms and then writes in place.
+
+Guarding tests: `internal/sessions` (`TestRecent*`,
+`TestReadingARecordDoesNotStopClaudeFromDeletingIt`) and
+`cmd/tray_sessions_test.go`.
 
 ## Running a local build
 

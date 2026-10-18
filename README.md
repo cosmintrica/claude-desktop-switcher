@@ -35,6 +35,18 @@
   <img src="docs/assets/tray-menu-preview.png" alt="Claude Desktop Switcher account menu in the Windows system tray" width="900">
 </p>
 
+> [!NOTE]
+> **About this fork.** This fork adds stability fixes found while switching
+> accounts every day with Claude Desktop from the Microsoft Store: a switch no
+> longer fails with "Access is denied", the screen is no longer dimmed during a
+> switch, the tray no longer stops after many window checks, a maximized Claude
+> window stays maximized, and the executable now opens from a double-click or a
+> desktop shortcut. It also keeps profile metadata inside its own folder and
+> preserves originals when a rollback fails. The download buttons below point to
+> the original project's releases, which do not include these fixes yet.
+> Everything that was found, changed and tested is described in
+> [Changes in this fork](docs/fork-changes.md).
+
 ## Install in a minute
 
 1. Download the **Windows x64 installer** using the button above. If your Windows device uses an ARM processor, choose **Windows ARM64** instead.

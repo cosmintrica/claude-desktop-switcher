@@ -131,6 +131,30 @@ Guarding tests: `internal/sessions` (`TestRecent*`,
 `TestReadingARecordDoesNotStopClaudeFromDeletingIt`) and
 `cmd/tray_sessions_test.go`.
 
+### A warning before running work stops
+
+Claude Code writes one file per running process in `~/.claude/sessions` and
+marks it `busy` while a turn runs. Before switching accounts, continuing a
+session on another account or closing Claude Desktop, the switcher lists the
+busy sessions of the main window and asks first; **No** cancels. A file whose
+process has ended, or whose process id now belongs to a process started at
+another time, is ignored. Guarding tests: `TestWorking*`,
+`TestProcessRunningComparesTheRecordedStartTime`,
+`TestStopWorkNoticeListsAtMostFiveSessions`.
+
+### Separate Claude windows are left alone
+
+Claude Desktop can run a second window beside itself when started with its own
+`--user-data-dir`. The switcher counted every `Claude.exe` of the package as
+Claude, so a switch or **Close Claude Desktop** also stopped such windows. Each
+process is now judged by the root of its Claude process tree, and a tree whose
+root was started with another data folder is ignored. The main window's own
+helper processes also carry `--user-data-dir` (pointing at its own folder), so
+a helper's flag decides nothing, and a root whose command line cannot be read
+still counts as the main window. Guarding tests: `TestMainInstance*`,
+`TestSeparateDataFolderLooksOnlyAtArguments`,
+`TestProcessCommandLineReadsARunningProcess`.
+
 ## Running a local build
 
 1. Build with `.\scripts\project.ps1 -Task Build -Arch amd64 -Version <version>`,

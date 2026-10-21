@@ -200,6 +200,21 @@ tests: `TestSeparateMenuState`, `TestSeparateWindowFolderSitsOutsideTheStorePack
 `TestManifestExecutableStaysInsideThePackage`,
 `TestClaudeExecutableFromTheInstalledPackage`.
 
+### Claude 3 moved its data folder
+
+Claude Desktop 3 (seen with 3.1623 on 2026-10-21; the move itself happened on
+2026-10-20) moves its data out of the Store package's redirected Roaming folder
+into `%LOCALAPPDATA%\Claude-Data\<package family>` (here
+`claude_pzs8sxrjxfjjc`), and leaves a `.user-data-left.<family>` marker in the
+old folder; `.user-data-back.<family>` marks a move back. The old folder kept
+only that marker, so a switch would have restored the account into a folder
+Claude no longer reads and reported success while Claude stayed on the same
+account (nothing was lost: with no live cookies there, the outgoing account
+was not saved over). The switcher now follows the marker, or the folder that
+holds Claude's data, the same way Claude does. The sign-in keys in
+`config.json` are unchanged. Guarding test:
+`TestMsixDataFolderFollowsClaudesMoveOutOfThePackage`.
+
 ### Verification of the third round
 
 - gofmt, `go mod tidy -diff`, `go vet ./...` and all package tests pass;

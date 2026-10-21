@@ -283,3 +283,43 @@ func TestClaudeExecutableFromTheInstalledPackage(t *testing.T) {
 		t.Fatalf("executable %q: %v", executable, err)
 	}
 }
+
+func TestMsixDataFolderFollowsClaudesMoveOutOfThePackage(t *testing.T) {
+	family := strings.ToLower(windowsPackageFamily)
+	tests := []struct {
+		name  string
+		files []string
+		moved bool
+	}{
+		{"Claude 2 keeps its data in the package", []string{"packaged/Local State"}, false},
+		{"Claude 3 moved it and left a marker", []string{"packaged/.user-data-left." + family, "moved/Local State"}, true},
+		{"only the moved folder holds data", []string{"moved/config.json"}, true},
+		{"moved back into the package", []string{"packaged/.user-data-back." + family, "packaged/Local State", "moved/Local State"}, false},
+		{"both hold data without a marker", []string{"packaged/config.json", "moved/config.json"}, false},
+		{"nothing yet", nil, false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			local := t.TempDir()
+			packaged := filepath.Join(local, "Packages", windowsPackageFamily, "LocalCache", "Roaming", "Claude")
+			moved := filepath.Join(local, "Claude-Data", family)
+			for _, file := range test.files {
+				folder, name, _ := strings.Cut(file, "/")
+				path := filepath.Join(map[string]string{"packaged": packaged, "moved": moved}[folder], name)
+				if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, nil, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			want := packaged
+			if test.moved {
+				want = moved
+			}
+			if got := msixDataFolder(local); got != want {
+				t.Fatalf("msixDataFolder() = %q, want %q", got, want)
+			}
+		})
+	}
+}

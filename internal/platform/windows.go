@@ -4,6 +4,7 @@ package platform
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -37,6 +38,7 @@ const (
 	gracefulCloseTimeout   = 2 * time.Second
 	forcedCloseTimeout     = 3 * time.Second
 	finalCloseGraceTimeout = 5 * time.Second
+	sessionRecordsFolder   = "claude-code-sessions"
 )
 
 type windowsInstallKind uint8
@@ -575,16 +577,29 @@ func (w *windowsPlatform) SeparateWindows() (map[string]bool, error) {
 
 // OpenSeparateWindow starts Claude Desktop beside the main window with its own
 // data folder. When a window with that folder already runs, Claude hands the
-// new start to it and brings it forward.
-func (w *windowsPlatform) OpenSeparateWindow(folder string) error {
+// new start, and the link with it, to that window and brings it forward.
+func (w *windowsPlatform) OpenSeparateWindow(folder, link string) error {
 	executable, err := w.claudeExecutable()
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(folder, 0o700); err != nil {
+	open, err := w.SeparateWindows()
+	if err != nil {
 		return err
 	}
-	command := exec.Command(executable, "--user-data-dir="+folder)
+	if !open[normalizeWindowsPath(folder)] {
+		if err := os.MkdirAll(folder, 0o700); err != nil {
+			return err
+		}
+		if err := shareSessionRecords(folder, w.root); err != nil {
+			return fmt.Errorf("could not share the Claude Code sessions with this window: %w", err)
+		}
+	}
+	args := []string{"--user-data-dir=" + folder}
+	if link != "" {
+		args = append(args, link)
+	}
+	command := exec.Command(executable, args...)
 	command.Dir = filepath.Dir(executable)
 	// Claude.exe can open a console for its diagnostics; the window itself must
 	// start visible, so no hidden-window flag is set.
@@ -854,6 +869,118 @@ func msixDataFolder(local string) string {
 		return moved
 	}
 	return packaged
+}
+
+// Claude keeps the Code tab's sessions in its data folder, one folder per
+// account, so a separate window's records folder is linked to the main
+// window's: each account then shows the same sessions in either window.
+// Records the window made in a folder of its own move to the main folder first.
+func shareSessionRecords(folder, mainRoot string) error {
+	if mainRoot == "" || normalizeWindowsPath(folder) == normalizeWindowsPath(mainRoot) {
+		return errors.New("the window's data folder is the main Claude folder")
+	}
+	link := filepath.Join(folder, sessionRecordsFolder)
+	target := filepath.Join(mainRoot, sessionRecordsFolder)
+	if err := os.MkdirAll(target, 0o700); err != nil {
+		return err
+	}
+	if current, err := os.Readlink(link); err == nil {
+		if normalizeWindowsPath(current) == normalizeWindowsPath(target) {
+			return nil
+		}
+		// The main folder moved, as Claude 3 moved it out of the Store package.
+		if err := os.Remove(link); err != nil {
+			return err
+		}
+		return createJunction(link, target)
+	}
+	info, err := os.Lstat(link)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+	case err != nil:
+		return err
+	case !info.IsDir():
+		return fmt.Errorf("%s is neither a folder nor a link", link)
+	default:
+		if err := moveSessionRecords(link, target); err != nil {
+			return err
+		}
+		if err := os.Rename(link, link+".before-sharing-"+time.Now().Format("20060102-150405")); err != nil {
+			return err
+		}
+	}
+	return createJunction(link, target)
+}
+
+// Records and deletion markers sit in <account>\<org>; a file the main folder
+// already has stays behind with everything else.
+func moveSessionRecords(from, into string) error {
+	return filepath.WalkDir(from, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		relative, err := filepath.Rel(from, path)
+		if err != nil {
+			return err
+		}
+		name := entry.Name()
+		record := strings.HasPrefix(name, "deleted_") || strings.HasPrefix(name, "local_") && strings.HasSuffix(name, ".json")
+		if !entry.Type().IsRegular() || !record || strings.Count(relative, string(filepath.Separator)) != 2 {
+			return nil
+		}
+		destination := filepath.Join(into, relative)
+		if _, err := os.Lstat(destination); !errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err := os.MkdirAll(filepath.Dir(destination), 0o700); err != nil {
+			return err
+		}
+		return os.Rename(path, destination)
+	})
+}
+
+// A directory junction, unlike a symbolic link, needs neither administrator
+// rights nor developer mode.
+func createJunction(link, target string) error {
+	target, err := filepath.Abs(target)
+	if err != nil {
+		return err
+	}
+	substitute, err := windows.UTF16FromString(`\??\` + target)
+	if err != nil {
+		return err
+	}
+	printed, err := windows.UTF16FromString(target)
+	if err != nil {
+		return err
+	}
+	names := append(substitute, printed...)
+	data := make([]byte, 16+2*len(names))
+	binary.LittleEndian.PutUint32(data[0:], windows.IO_REPARSE_TAG_MOUNT_POINT)
+	binary.LittleEndian.PutUint16(data[4:], uint16(len(data)-8))
+	binary.LittleEndian.PutUint16(data[10:], uint16(2*(len(substitute)-1)))
+	binary.LittleEndian.PutUint16(data[12:], uint16(2*len(substitute)))
+	binary.LittleEndian.PutUint16(data[14:], uint16(2*(len(printed)-1)))
+	for index, unit := range names {
+		binary.LittleEndian.PutUint16(data[16+2*index:], unit)
+	}
+	if err := os.Mkdir(link, 0o700); err != nil {
+		return err
+	}
+	name, err := windows.UTF16PtrFromString(link)
+	if err == nil {
+		var handle windows.Handle
+		handle, err = windows.CreateFile(name, windows.GENERIC_WRITE, 0, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+		if err == nil {
+			var returned uint32
+			err = windows.DeviceIoControl(handle, windows.FSCTL_SET_REPARSE_POINT, &data[0], uint32(len(data)), nil, 0, &returned, nil)
+			_ = windows.CloseHandle(handle)
+		}
+	}
+	if err != nil {
+		_ = os.Remove(link)
+	}
+	return err
 }
 
 func holdsClaudeData(folder string) bool {

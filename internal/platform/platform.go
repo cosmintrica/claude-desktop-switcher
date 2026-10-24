@@ -27,10 +27,11 @@ type LoginWindowObserver interface {
 }
 
 // SeparateWindowRunner runs Claude Desktop windows beside the main one, each
-// with its own data folder and sign-in.
+// with its own data folder and sign-in. OpenSeparateWindow hands the window
+// link when one is given.
 type SeparateWindowRunner interface {
 	SeparateWindows() (map[string]bool, error)
-	OpenSeparateWindow(folder string) error
+	OpenSeparateWindow(folder, link string) error
 }
 
 // Current returns the Platform implementation for the running OS.

@@ -44,6 +44,18 @@ func TestSeparateWindowFolderSitsOutsideTheStorePackage(t *testing.T) {
 	}
 }
 
+func TestSeparateWindowInUsePrompt(t *testing.T) {
+	title, message := separateWindowInUsePrompt("contact@accounts.test")
+	if title != "contact@accounts.test is open in a separate window" {
+		t.Fatalf("title = %q", title)
+	}
+	want := "contact@accounts.test is already signed in to a separate Claude window. Opening it in the main window too would let both windows change the same sessions.\n\n" +
+		"Bring that window to the front?"
+	if message != want {
+		t.Fatalf("message = %q\nwant %q", message, want)
+	}
+}
+
 func TestSeparateWindowPrompt(t *testing.T) {
 	title, message := separateWindowPrompt("claude1@accounts.test")
 	if title != "Open claude1@accounts.test in a separate window?" {

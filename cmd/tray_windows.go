@@ -208,6 +208,12 @@ func (s *trayState) handleAdd() {
 			s.setStatus("An operation is already in progress")
 			continue
 		}
+		if running, _ := s.claudeStateSnapshot(); running {
+			title, message := addAccountPrompt(s.workingSessions())
+			if confirmed, err := nativeTrayConfirm(title, message); err != nil || !confirmed {
+				continue
+			}
+		}
 		name, err := s.nextAutomaticProfileName()
 		if err != nil {
 			s.setStatus("Could not prepare the new account: " + err.Error())
@@ -1426,9 +1432,11 @@ func (s *trayState) watchAccount(item *systray.MenuItem, name string, stop <-cha
 			s.offerSeparateWindow(label, folder)
 			continue
 		}
-		if working := s.workingSessions(); len(working) > 0 &&
-			!confirmStoppingWork("Switch to "+label+"?", "Claude Desktop will close and reopen on "+label+". You can continue these sessions afterwards.", "Switch anyway?", working) {
-			continue
+		if running, _ := s.claudeStateSnapshot(); running {
+			title, message := switchPrompt(label, s.workingSessions())
+			if confirmed, err := nativeTrayConfirm(title, message); err != nil || !confirmed {
+				continue
+			}
 		}
 		if !s.beginSwitch() {
 			s.setStatus("Wait for automatic account setup to finish")

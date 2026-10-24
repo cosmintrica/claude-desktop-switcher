@@ -255,6 +255,18 @@ Guarding tests: `TestShareSessionRecords*`, `TestCopyWorktreeLeases*`,
 `TestWorkingLeavesOutSessionsOfAccountsInSeparateWindows`,
 `TestSeparateWindowInUsePrompt`, `TestContinueMenuTitleSaysWhereTheAccountIsOpen`.
 
+### A switch always asks first
+
+A switch from **Accounts** and **Add account...** closed Claude Desktop at once
+when no Claude Code session was working. On 2026-10-24 a build from before the
+Claude 3 fix looked for working sessions in the old, empty data folder, found
+none, and closed Claude without asking while sessions were working. Both
+actions now always ask first while Claude Desktop is open, and the question
+lists the sessions that are working or says that none is. **Close Claude
+Desktop** still asks only while a session is working. Guarding tests:
+`TestSwitchPromptAsksEvenWhenNoSessionIsWorking`,
+`TestAddAccountPromptAsksBeforeClaudeCloses`.
+
 ### Verification of the third round
 
 - gofmt, `go mod tidy -diff`, `go vet ./...` and all package tests pass;

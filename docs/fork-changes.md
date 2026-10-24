@@ -215,6 +215,46 @@ holds Claude's data, the same way Claude does. The sign-in keys in
 `config.json` are unchanged. Guarding test:
 `TestMsixDataFolderFollowsClaudesMoveOutOfThePackage`.
 
+### A separate window shows the account's sessions
+
+Claude keeps the Code tab's session records in its data folder
+(`claude-code-sessions\<account>\<org>\local_*.json`), so a separate window
+opened with an empty list even for an account with many sessions (seen on
+2026-10-24 with Claude 3.6556). Before it starts a separate window that is not
+running, the switcher now makes that window's `claude-code-sessions` a
+directory junction to the main window's folder (a junction needs neither
+administrator rights nor developer mode). Records and deletion markers the
+window had made in a folder of its own move to the main folder first; a file
+the main folder already has, and everything else, stays in
+`claude-code-sessions.before-sharing-<time>`. When the main folder moves, the
+link is pointed at the new place the next time the window opens. Each account
+now shows the same sessions, and runs its scheduled tasks, in whichever window
+it is open in.
+
+Two windows must then never hold the same account. Choosing an account in
+**Accounts** while it is signed in to a separate window offers to bring that
+window forward instead of switching the main window to it. **Continue a
+session** for such an account opens the session in its separate window, without
+closing the main one: the link is passed to `Claude.exe` started with that
+window's `--user-data-dir`, which hands it to the running window, since links
+opened through Windows always reach the main window. The menu marks that
+account "(separate window)".
+
+Claude reserves each worktree folder for one session in `git-worktrees.json`,
+one file per data folder, and gives a session whose reservation is missing a
+fresh worktree when its folder has moved to another branch. Before a separate
+window starts, it therefore receives the main window's reservations for its
+account's sessions (only those not yet in its own file, never the spare pool
+or folders still being created). Reservations a window makes for new sessions
+stay in its own file; when that account opens in the main window again, Claude
+3 leases such a folder back in place if its branch is unchanged. The question
+about busy sessions before a switch now counts only the sessions of the account
+signed in to the main window, because the records are shared and separate
+windows keep running. Sidebar groups and starred sessions stay per window.
+Guarding tests: `TestShareSessionRecords*`, `TestCopyWorktreeLeases*`,
+`TestWorkingLeavesOutSessionsOfAccountsInSeparateWindows`,
+`TestSeparateWindowInUsePrompt`, `TestContinueMenuTitleSaysWhereTheAccountIsOpen`.
+
 ### Verification of the third round
 
 - gofmt, `go mod tidy -diff`, `go vet ./...` and all package tests pass;

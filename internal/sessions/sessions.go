@@ -280,6 +280,9 @@ func working(claudeDir, appData string, running func(pid int, procStart string) 
 	if err != nil {
 		return nil
 	}
+	// Separate windows share these session records, and the main window runs
+	// only the sessions of the account signed in to it.
+	account := profile.AccountUUIDHashAt(appData)
 	var titles []string
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
@@ -293,7 +296,7 @@ func working(claudeDir, appData string, running func(pid int, procStart string) 
 		if json.Unmarshal(data, &process) != nil || process.Status != "busy" || process.Entrypoint != "claude-desktop" {
 			continue
 		}
-		if !hostedBy(appData, process.HostSessionID) || !running(process.PID, process.ProcStart) {
+		if !hostedBy(appData, account, process.HostSessionID) || !running(process.PID, process.ProcStart) {
 			continue
 		}
 		title := strings.TrimSpace(process.Name)
@@ -306,7 +309,7 @@ func working(claudeDir, appData string, running func(pid int, procStart string) 
 	return titles
 }
 
-func hostedBy(appData, id string) bool {
+func hostedBy(appData, account, id string) bool {
 	if !continueIDPattern.MatchString(id) {
 		return false
 	}
@@ -316,6 +319,9 @@ func hostedBy(appData, id string) bool {
 		return false
 	}
 	for _, accountDir := range accountDirs {
+		if account != "" && profile.AccountUUIDHash(accountDir.Name()) != account {
+			continue
+		}
 		orgDirs, err := os.ReadDir(filepath.Join(root, accountDir.Name()))
 		if err != nil {
 			continue
@@ -327,6 +333,113 @@ func hostedBy(appData, id string) bool {
 		}
 	}
 	return false
+}
+
+// Claude reserves each worktree folder for one session in git-worktrees.json,
+// one file per data folder, and gives a session whose reservation is missing a
+// fresh worktree when the folder has moved to another branch. A separate window
+// shares the main window's session records, so before it starts it receives
+// the main window's reservations for its account's sessions.
+func CopyWorktreeLeases(mainData, windowData, account string) error {
+	ids := accountSessionIDs(filepath.Join(mainData, recordsDirName), account)
+	if len(ids) == 0 {
+		return nil
+	}
+	data, err := readShared(filepath.Join(mainData, worktreesFileName))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var main struct {
+		SchemaVersion json.RawMessage            `json:"schemaVersion"`
+		Worktrees     map[string]json.RawMessage `json:"worktrees"`
+	}
+	if err := json.Unmarshal(data, &main); err != nil {
+		return err
+	}
+	path := filepath.Join(windowData, worktreesFileName)
+	window := map[string]json.RawMessage{}
+	if data, err := os.ReadFile(path); err == nil {
+		if err := json.Unmarshal(data, &window); err != nil {
+			return err
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if version, ok := window["schemaVersion"]; ok && string(version) != string(main.SchemaVersion) {
+		return nil
+	}
+	worktrees := map[string]json.RawMessage{}
+	if raw, ok := window["worktrees"]; ok {
+		if err := json.Unmarshal(raw, &worktrees); err != nil {
+			return err
+		}
+	}
+	copied := false
+	for name, raw := range main.Worktrees {
+		var entry struct {
+			LeasedBy string `json:"leasedBy"`
+			Status   string `json:"status"`
+		}
+		if _, held := worktrees[name]; held || json.Unmarshal(raw, &entry) != nil || !ids[entry.LeasedBy] || entry.Status == "creating" {
+			continue
+		}
+		worktrees[name] = raw
+		copied = true
+	}
+	if !copied {
+		return nil
+	}
+	if window["worktrees"], err = json.Marshal(worktrees); err != nil {
+		return err
+	}
+	if len(main.SchemaVersion) > 0 {
+		window["schemaVersion"] = main.SchemaVersion
+	}
+	out, err := json.MarshalIndent(window, "", "\t")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(windowData, 0o700); err != nil {
+		return err
+	}
+	temp, err := os.CreateTemp(windowData, "."+worktreesFileName+"-*")
+	if err != nil {
+		return err
+	}
+	_, err = temp.Write(out)
+	if closeErr := temp.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = os.Rename(temp.Name(), path)
+	}
+	if err != nil {
+		_ = os.Remove(temp.Name())
+	}
+	return err
+}
+
+func accountSessionIDs(root, account string) map[string]bool {
+	ids := make(map[string]bool)
+	accountDirs, _ := os.ReadDir(root)
+	for _, accountDir := range accountDirs {
+		if account == "" || profile.AccountUUIDHash(accountDir.Name()) != account {
+			continue
+		}
+		orgDirs, _ := os.ReadDir(filepath.Join(root, accountDir.Name()))
+		for _, orgDir := range orgDirs {
+			entries, _ := os.ReadDir(filepath.Join(root, accountDir.Name(), orgDir.Name()))
+			for _, entry := range entries {
+				if id, ok := strings.CutSuffix(entry.Name(), ".json"); ok && strings.HasPrefix(id, "local_") {
+					ids[id] = true
+				}
+			}
+		}
+	}
+	return ids
 }
 
 type gitState struct {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/TinoA/claude-desktop-switcher/internal/platform"
 	"github.com/TinoA/claude-desktop-switcher/internal/profile"
+	"github.com/TinoA/claude-desktop-switcher/internal/sessions"
 	"github.com/getlantern/systray"
 )
 
@@ -177,10 +178,17 @@ func (s *trayState) openSeparateWindow(name string) {
 			return
 		}
 	}
+	if open, err := runner.SeparateWindows(); err == nil && !open[normalizedFolder(folder)] {
+		if err := s.copyWorktreeLeases(name, folder); err != nil {
+			s.setStatus("Could not open a separate window: " + err.Error())
+			trayWarning("Could not open a separate window", "The worktree folders of "+label+"'s sessions could not be prepared for the window.\n\n"+err.Error())
+			return
+		}
+	}
 	s.setStatus("Opening a separate window for " + label)
 	card := startTerminalCard("claude window "+label, "starting Claude", 0.2)
 	shown := time.Now()
-	err = runner.OpenSeparateWindow(folder)
+	err = runner.OpenSeparateWindow(folder, "")
 	if err == nil {
 		card.Step("waiting for the window", 0.5)
 		deadline := time.Now().Add(separateStartWait)
@@ -202,6 +210,73 @@ func (s *trayState) openSeparateWindow(name string) {
 		return
 	}
 	s.refreshAccounts()
+}
+
+// Separate windows share the main window's session records, so an account
+// signed in to one of them must not open in the main window too: both windows
+// would change the same sessions.
+func (s *trayState) separateWindowWith(name string) (string, bool) {
+	runner, ok := s.platform.(platform.SeparateWindowRunner)
+	if !ok {
+		return "", false
+	}
+	open, err := runner.SeparateWindows()
+	if err != nil || len(open) == 0 {
+		return "", false
+	}
+	profiles, err := s.store.List()
+	if err != nil {
+		return "", false
+	}
+	account := profileAccount(profiles, name)
+	if account == "" {
+		return "", false
+	}
+	for _, meta := range profiles {
+		folder, err := separateWindowFolder(meta.Name)
+		if err == nil && open[normalizedFolder(folder)] && profile.AccountUUIDHashAt(folder) == account {
+			return folder, true
+		}
+	}
+	return "", false
+}
+
+func (s *trayState) copyWorktreeLeases(name, folder string) error {
+	appData, err := s.platform.AppDataPath()
+	if err != nil {
+		return err
+	}
+	profiles, err := s.store.List()
+	if err != nil {
+		return err
+	}
+	return sessions.CopyWorktreeLeases(appData, folder, profileAccount(profiles, name))
+}
+
+func profileAccount(profiles []profile.Meta, name string) string {
+	for _, meta := range profiles {
+		if meta.Name == name {
+			return meta.AccountUUIDHash
+		}
+	}
+	return ""
+}
+
+func (s *trayState) offerSeparateWindow(label, folder string) {
+	title, message := separateWindowInUsePrompt(label)
+	if confirmed, err := nativeTrayConfirm(title, message); err != nil || !confirmed {
+		return
+	}
+	if err := s.platform.(platform.SeparateWindowRunner).OpenSeparateWindow(folder, ""); err != nil {
+		s.setStatus("Could not bring the separate window forward: " + err.Error())
+		trayWarning("Could not bring the separate window forward", err.Error())
+	}
+}
+
+func separateWindowInUsePrompt(label string) (string, string) {
+	return label + " is open in a separate window",
+		label + " is already signed in to a separate Claude window. Opening it in the main window too would let both windows change the same sessions.\n\n" +
+			"Bring that window to the front?"
 }
 
 func separateWindowPrompt(label string) (string, string) {

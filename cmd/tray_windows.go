@@ -1335,8 +1335,8 @@ func (s *trayState) loadAccounts() {
 			delete(s.profileLabels, name)
 		}
 	}
-	s.updateSessionMenusLocked(profiles, active, running, installed && !busy, recent, recentRead)
 	s.updateSeparateMenuLocked(profiles, active, running, installed && !busy, separate)
+	s.updateSessionMenusLocked(profiles, active, running, installed && !busy, recent, recentRead)
 	if !installed {
 		s.setStatus("Claude Desktop is not installed or was not detected")
 	}
@@ -1422,6 +1422,10 @@ func (s *trayState) watchAccount(item *systray.MenuItem, name string, stop <-cha
 			continue
 		}
 		label := s.cachedProfileDisplayName(name)
+		if folder, ok := s.separateWindowWith(name); ok {
+			s.offerSeparateWindow(label, folder)
+			continue
+		}
 		if working := s.workingSessions(); len(working) > 0 &&
 			!confirmStoppingWork("Switch to "+label+"?", "Claude Desktop will close and reopen on "+label+". You can continue these sessions afterwards.", "Switch anyway?", working) {
 			continue

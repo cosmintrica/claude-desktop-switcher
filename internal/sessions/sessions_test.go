@@ -399,6 +399,107 @@ func TestWorkingListsTheBusySessionsOfTheMainWindow(t *testing.T) {
 	}
 }
 
+func TestWorkingLeavesOutSessionsOfAccountsInSeparateWindows(t *testing.T) {
+	f := newFixture(t)
+	folder := f.folder("Sample Project One")
+	f.record(accountA, "local_a1", map[string]any{"cliSessionId": "c1", "cwd": folder})
+	f.record(accountB, "local_b1", map[string]any{"cliSessionId": "c2", "cwd": folder})
+	f.writeJSON("config.json", map[string]any{"lastKnownAccountUuid": accountA})
+	f.process("101.json", `{"pid":101,"procStart":"11","status":"busy","entrypoint":"claude-desktop","hostSessionId":"local_a1","name":"In the main window"}`)
+	f.process("102.json", `{"pid":102,"procStart":"12","status":"busy","entrypoint":"claude-desktop","hostSessionId":"local_b1","name":"In a separate window"}`)
+
+	got := working(f.claudeDir, f.appData, func(int, string) bool { return true })
+
+	if want := []string{"In the main window"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("working sessions = %q, want %q", got, want)
+	}
+}
+
+func TestCopyWorktreeLeasesGivesTheWindowItsAccountsReservations(t *testing.T) {
+	f := newFixture(t)
+	folder := f.folder("Sample Project One")
+	for _, id := range []string{"local_a1", "local_a2", "local_a3"} {
+		f.record(accountA, id, map[string]any{"cliSessionId": id, "cwd": folder})
+	}
+	f.record(accountB, "local_b1", map[string]any{"cliSessionId": "b1", "cwd": folder})
+	f.writeJSON(worktreesFileName, map[string]any{
+		"schemaVersion": 2,
+		"worktrees": map[string]any{
+			"brave-a1":   map[string]any{"name": "brave-a1", "leasedBy": "local_a1", "branch": "claude/brave-a1", "autoTrusted": true},
+			"fresh-a2":   map[string]any{"name": "fresh-a2", "leasedBy": "local_a2", "status": "creating"},
+			"kept-a3":    map[string]any{"name": "kept-a3", "leasedBy": "local_a3", "branch": "main"},
+			"other-b1":   map[string]any{"name": "other-b1", "leasedBy": "local_b1"},
+			"spare-pool": map[string]any{"name": "spare-pool", "leasedBy": "", "pooledAt": 1},
+		},
+		"originPins": map[string]any{},
+	})
+	window := filepath.Join(t.TempDir(), "Main-account")
+	writeWindowFile(t, window, `{"schemaVersion": 2, "untrackedDirGc": {"roots": {}}, "worktrees": {"kept-a3": {"name": "kept-a3", "leasedBy": "local_a3", "branch": "feature"}}}`)
+
+	if err := CopyWorktreeLeases(f.appData, window, profile.AccountUUIDHash(accountA)); err != nil {
+		t.Fatal(err)
+	}
+
+	var got map[string]any
+	data, err := os.ReadFile(filepath.Join(window, worktreesFileName))
+	if err != nil || json.Unmarshal(data, &got) != nil {
+		t.Fatalf("window reservations unreadable: %v %s", err, data)
+	}
+	want := map[string]any{
+		"schemaVersion":  float64(2),
+		"untrackedDirGc": map[string]any{"roots": map[string]any{}},
+		"worktrees": map[string]any{
+			"brave-a1": map[string]any{"name": "brave-a1", "leasedBy": "local_a1", "branch": "claude/brave-a1", "autoTrusted": true},
+			"kept-a3":  map[string]any{"name": "kept-a3", "leasedBy": "local_a3", "branch": "feature"},
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("window reservations = %v\nwant %v", got, want)
+	}
+}
+
+func TestCopyWorktreeLeasesStartsAWindowFileAndLeavesAnotherFormatAlone(t *testing.T) {
+	f := newFixture(t)
+	f.record(accountA, "local_a1", map[string]any{"cliSessionId": "c1", "cwd": f.folder("Sample Project One")})
+	f.writeJSON(worktreesFileName, map[string]any{
+		"schemaVersion": 2,
+		"worktrees":     map[string]any{"brave-a1": map[string]any{"name": "brave-a1", "leasedBy": "local_a1"}},
+	})
+
+	fresh := filepath.Join(t.TempDir(), "new-window")
+	if err := CopyWorktreeLeases(f.appData, fresh, profile.AccountUUIDHash(accountA)); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		SchemaVersion int                       `json:"schemaVersion"`
+		Worktrees     map[string]map[string]any `json:"worktrees"`
+	}
+	data, err := os.ReadFile(filepath.Join(fresh, worktreesFileName))
+	if err != nil || json.Unmarshal(data, &got) != nil || got.SchemaVersion != 2 || got.Worktrees["brave-a1"]["leasedBy"] != "local_a1" {
+		t.Fatalf("new window reservations = %s (%v)", data, err)
+	}
+
+	other := filepath.Join(t.TempDir(), "newer-claude")
+	const newer = `{"schemaVersion": 3, "worktrees": {}}`
+	writeWindowFile(t, other, newer)
+	if err := CopyWorktreeLeases(f.appData, other, profile.AccountUUIDHash(accountA)); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(filepath.Join(other, worktreesFileName)); err != nil || string(data) != newer {
+		t.Fatalf("a window file of another format changed: %s (%v)", data, err)
+	}
+}
+
+func writeWindowFile(t *testing.T, window, content string) {
+	t.Helper()
+	if err := os.MkdirAll(window, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(window, worktreesFileName), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestWorkingWithoutRunningSessions(t *testing.T) {
 	f := newFixture(t)
 	if got := working(f.claudeDir, f.appData, func(int, string) bool { return true }); len(got) != 0 {

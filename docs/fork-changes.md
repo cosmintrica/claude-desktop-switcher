@@ -293,6 +293,31 @@ Desktop** still asks only while a session is working. Guarding tests:
   account and opened the chosen session, then switched back and opened the
   first one.
 
+## Based on upstream v1.2.2 (2026-11-01)
+
+The original project released v1.2.1, with this fork's switching fixes from
+[#17](https://github.com/OpenScz/claude-desktop-switcher/pull/17), and v1.2.2
+on 2026-10-26. `feat/account-sessions` merges v1.2.2. Two places were resolved
+by hand:
+
+- Claude's data folder: the Store install keeps following Claude 3's move to
+  `Claude-Data` and, like upstream #14, uses an existing profile in the real
+  Roaming folder when the package has none.
+- The progress card: the fork keeps its terminal card. Upstream's card drawn
+  over the Claude window (6dce87c) and the `FocusDesktopWindow` it needed are
+  left out.
+
+Fork builds name their version `v<upstream version>-fork-<commit>`. The tray's
+update check reads the original project's releases and ignores the `-fork`
+part, so **New version available** appears only when upstream releases
+something newer than the version merged here. That release lacks the fork's
+changes: merge it here instead of installing it.
+
+Known gap: Claude 4 from the Store writes the main window's log to
+`%LOCALAPPDATA%\Claude\Logs\main.log`. Upstream #14 reads that file only for the
+classic install, so for the Store install the switcher still has no log
+signal while it checks a switch or a new sign-in.
+
 ## Running a local build
 
 1. Build with `.\scripts\project.ps1 -Task Build -Arch amd64 -Version <version>`,

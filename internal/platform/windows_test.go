@@ -103,6 +103,62 @@ func TestMSIXFallbackOwnsOnlyClaudePackageProcesses(t *testing.T) {
 	}
 }
 
+func TestMSIXDataPathFallsBackToExistingRoamingProfile(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		packaged    bool
+		roaming     bool
+		roamingFile bool
+		wantRoaming bool
+	}{
+		{name: "existing roaming profile", roaming: true, wantRoaming: true},
+		{name: "packaged profile takes precedence", packaged: true, roaming: true},
+		{name: "uninitialized profiles keep packaged path"},
+		{name: "roaming path must be a directory", roamingFile: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			local := t.TempDir()
+			roaming := t.TempDir()
+			t.Setenv("LOCALAPPDATA", local)
+			t.Setenv("APPDATA", roaming)
+			packageDir := filepath.Join(local, "Packages", windowsPackageFamily)
+			packagedRoot := filepath.Join(packageDir, "LocalCache", "Roaming", "Claude")
+			roamingRoot := filepath.Join(roaming, "Claude")
+			paths := []string{packageDir}
+			if tc.packaged {
+				paths = append(paths, packagedRoot)
+			}
+			if tc.roaming {
+				paths = append(paths, roamingRoot)
+			}
+			for _, path := range paths {
+				if err := os.MkdirAll(path, 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.roamingFile {
+				if err := os.WriteFile(roamingRoot, nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			want := packagedRoot
+			if tc.wantRoaming {
+				want = roamingRoot
+			}
+			selected, alternatives := detectWindowsInstall()
+			for _, candidate := range append(alternatives, selected) {
+				if candidate.kind == installMSIX {
+					if candidate.root != want {
+						t.Fatalf("MSIX data path = %q, want %q", candidate.root, want)
+					}
+					return
+				}
+			}
+			t.Fatal("MSIX installation was not detected")
+		})
+	}
+}
+
 func TestPathWithinRejectsSiblingDirectory(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "AnthropicClaude")
 	if !pathWithin(filepath.Join(root, "app-1", "claude.exe"), root) {
@@ -289,23 +345,27 @@ func TestMsixDataFolderFollowsClaudesMoveOutOfThePackage(t *testing.T) {
 	tests := []struct {
 		name  string
 		files []string
-		moved bool
+		want  string
 	}{
-		{"Claude 2 keeps its data in the package", []string{"packaged/Local State"}, false},
-		{"Claude 3 moved it and left a marker", []string{"packaged/.user-data-left." + family, "moved/Local State"}, true},
-		{"only the moved folder holds data", []string{"moved/config.json"}, true},
-		{"moved back into the package", []string{"packaged/.user-data-back." + family, "packaged/Local State", "moved/Local State"}, false},
-		{"both hold data without a marker", []string{"packaged/config.json", "moved/config.json"}, false},
-		{"nothing yet", nil, false},
+		{"Claude 2 keeps its data in the package", []string{"packaged/Local State"}, "packaged"},
+		{"Claude 3 moved it and left a marker", []string{"packaged/.user-data-left." + family, "moved/Local State"}, "moved"},
+		{"only the moved folder holds data", []string{"moved/config.json"}, "moved"},
+		{"moved back into the package", []string{"packaged/.user-data-back." + family, "packaged/Local State", "moved/Local State"}, "packaged"},
+		{"both hold data without a marker", []string{"packaged/config.json", "moved/config.json"}, "packaged"},
+		{"the moved folder wins over a Roaming profile", []string{"moved/config.json", "roaming/config.json"}, "moved"},
+		{"nothing yet", nil, "packaged"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			local := t.TempDir()
-			packaged := filepath.Join(local, "Packages", windowsPackageFamily, "LocalCache", "Roaming", "Claude")
-			moved := filepath.Join(local, "Claude-Data", family)
+			local, appData := t.TempDir(), t.TempDir()
+			folders := map[string]string{
+				"packaged": filepath.Join(local, "Packages", windowsPackageFamily, "LocalCache", "Roaming", "Claude"),
+				"moved":    filepath.Join(local, "Claude-Data", family),
+				"roaming":  filepath.Join(appData, "Claude"),
+			}
 			for _, file := range test.files {
 				folder, name, _ := strings.Cut(file, "/")
-				path := filepath.Join(map[string]string{"packaged": packaged, "moved": moved}[folder], name)
+				path := filepath.Join(folders[folder], name)
 				if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 					t.Fatal(err)
 				}
@@ -313,12 +373,8 @@ func TestMsixDataFolderFollowsClaudesMoveOutOfThePackage(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			want := packaged
-			if test.moved {
-				want = moved
-			}
-			if got := msixDataFolder(local); got != want {
-				t.Fatalf("msixDataFolder() = %q, want %q", got, want)
+			if got := msixDataFolder(local, appData); got != folders[test.want] {
+				t.Fatalf("msixDataFolder() = %q, want %q", got, folders[test.want])
 			}
 		})
 	}

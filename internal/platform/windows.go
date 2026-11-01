@@ -790,7 +790,7 @@ func detectWindowsInstall() (windowsInstall, []windowsInstall) {
 	if info, err := os.Stat(msixPackageDir); err == nil && info.IsDir() {
 		candidates = appendInstallCandidate(candidates, windowsInstall{
 			id:          "msix:" + windowsPackageFamily,
-			root:        msixDataFolder(local),
+			root:        msixDataFolder(local, appData),
 			processRoot: filepath.Join(os.Getenv("ProgramFiles"), "WindowsApps"),
 			kind:        installMSIX,
 			msix:        true,
@@ -846,16 +846,22 @@ func detectWindowsInstall() (windowsInstall, []windowsInstall) {
 // Claude 3 moves its data out of the Store package's redirected Roaming folder
 // into %LOCALAPPDATA%\Claude-Data\<package family> and leaves a
 // ".user-data-left.<family>" marker behind; ".user-data-back.<family>" marks a
-// move back into the package.
-func msixDataFolder(local string) string {
+// move back into the package. Without a packaged folder, an existing profile
+// in the real Roaming folder is used.
+func msixDataFolder(local, appData string) string {
 	family := strings.ToLower(windowsPackageFamily)
 	packaged := filepath.Join(local, "Packages", windowsPackageFamily, "LocalCache", "Roaming", "Claude")
 	moved := filepath.Join(local, "Claude-Data", family)
+	roaming := filepath.Join(appData, "Claude")
+	_, packagedErr := os.Stat(packaged)
+	roamingInfo, roamingErr := os.Stat(roaming)
 	switch {
 	case pathExists(filepath.Join(packaged, ".user-data-back."+family)):
 		return packaged
 	case pathExists(filepath.Join(packaged, ".user-data-left."+family)), holdsClaudeData(moved) && !holdsClaudeData(packaged):
 		return moved
+	case errors.Is(packagedErr, os.ErrNotExist) && roamingErr == nil && roamingInfo.IsDir():
+		return roaming
 	}
 	return packaged
 }

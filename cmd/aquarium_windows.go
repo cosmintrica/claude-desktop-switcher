@@ -161,6 +161,8 @@ type aquariumWindow struct {
 	hover      string
 	hoverFish  string
 	tracking   bool
+	pointerIn  bool
+	pointerOut time.Time
 	visible    bool
 	fullScreen bool
 	ticks      int
@@ -266,7 +268,7 @@ func aquariumWindowProc(hwnd, message, wParam, lParam uintptr) uintptr {
 			a.mouseMove(lParam)
 			return 0
 		case wmMouseLeave:
-			a.tracking = false
+			a.tracking, a.pointerIn, a.pointerOut = false, false, time.Now()
 			a.hover, a.hoverFish = "", ""
 			return 0
 		case wmLButtonUp:
@@ -461,7 +463,10 @@ func (a *aquariumWindow) render() {
 	}
 	a.tank.Step(aquariumTick.Seconds())
 	clear(a.frame.Pix)
-	a.tank.Draw(a.art, a.hover == "plus")
+	a.tank.Draw(a.art)
+	if a.plusShown(open && panel.kind == plusPanel) {
+		aquarium.DrawPlus(a.art, a.hover == "plus")
+	}
 	aquarium.DrawImage(a.frame, a.art, a.bowl.X, a.bowl.Y, a.scale)
 	a.drawTag(accounts)
 	a.buttons = a.buttons[:0]
@@ -470,6 +475,12 @@ func (a *aquariumWindow) render() {
 		a.drawPanel(panel, accounts)
 	}
 	a.present()
+}
+
+// The plus shows while the pointer is on the aquarium, a moment after it
+// leaves, and while the list it opens is shown.
+func (a *aquariumWindow) plusShown(listOpen bool) bool {
+	return a.pointerIn || listOpen || time.Since(a.pointerOut) < 600*time.Millisecond
 }
 
 func aquariumWindows(accounts []aquariumAccount) []aquarium.Window {
@@ -848,6 +859,7 @@ func (a *aquariumWindow) mouseMove(lParam uintptr) {
 		aquariumTrackMouse.Call(uintptr(unsafe.Pointer(&track)))
 		a.tracking = true
 	}
+	a.pointerIn = true
 	a.hover, a.hoverFish = a.hitTest(pointerPosition(lParam))
 }
 
@@ -865,7 +877,7 @@ func (a *aquariumWindow) hitTest(p image.Point) (string, string) {
 		}
 	}
 	art := image.Pt(floorDiv(p.X-a.bowl.X, a.scale), floorDiv(p.Y-a.bowl.Y, a.scale))
-	if art.In(aquarium.PlusButton) {
+	if art.In(aquarium.PlusButton) && a.plusShown(false) {
 		return "plus", ""
 	}
 	if fish := a.tank.FishAt(art.X, art.Y); fish != nil {

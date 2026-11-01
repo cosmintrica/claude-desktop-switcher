@@ -1373,8 +1373,13 @@ func (s *trayState) loadAccounts() {
 	}
 	s.updateSeparateMenuLocked(profiles, active, running, installed && !busy, separate)
 	s.updateCloseMenuLocked(profiles, active, installed && !busy)
-	if !busy {
+	switch {
+	case !busy:
 		s.aquarium.setAccounts(s.aquariumAccountsLocked(profiles, active, running))
+	case s.initializing && current != "":
+		// Checking the live account takes a few seconds after the tray starts;
+		// until then the account Claude was left on wears the crown.
+		s.aquarium.setAccounts(s.aquariumAccountsLocked(profiles, current, running))
 	}
 	s.updateSessionMenusLocked(profiles, active, running, installed && !busy, recent, recentRead)
 	if !installed {

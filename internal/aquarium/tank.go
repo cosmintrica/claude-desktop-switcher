@@ -237,8 +237,7 @@ func (f *Fish) TagPoint() (int, int) {
 }
 
 // Draw paints the bowl, the fish, bubbles and splashes into dst, BowlW×BowlH.
-func (t *Tank) Draw(dst *image.NRGBA, plusHover bool) {
-	clear(dst.Pix)
+func (t *Tank) Draw(dst *image.NRGBA) {
 	copy(dst.Pix, bowlBack.Pix)
 	for _, f := range t.Fish {
 		x, y := f.origin()
@@ -253,7 +252,6 @@ func (t *Tank) Draw(dst *image.NRGBA, plusHover bool) {
 		Blend(dst, int(math.Round(s.x)), int(math.Round(s.y)), color.NRGBA{R: 190, G: 230, B: 255, A: 242})
 	}
 	DrawImage(dst, bowlFront, 0, 0, 1)
-	drawPlus(dst, plusHover)
 }
 
 // FishAt finds the fish drawn at the art pixel (x, y); a fish on its way out

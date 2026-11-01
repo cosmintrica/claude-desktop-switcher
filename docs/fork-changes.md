@@ -222,7 +222,7 @@ Claude keeps the Code tab's session records in its data folder
 opened with an empty list even for an account with many sessions (seen on
 2026-10-24 with Claude 3.6556).
 
-The first fix (2026-10-24, d3512ac) made the window's `claude-code-sessions` a
+The first fix (2026-10-24, 27a87d0) made the window's `claude-code-sessions` a
 directory junction to the main window's folder. Claude reads through such a
 link but refuses to write through it: its private-file writer opens the
 temporary file with `O_EXCL` and checks the path, and every save failed with

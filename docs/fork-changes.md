@@ -344,10 +344,12 @@ part, so **New version available** appears only when upstream releases
 something newer than the version merged here. That release lacks the fork's
 changes: merge it here instead of installing it.
 
-Known gap: Claude 4 from the Store writes the main window's log to
-`%LOCALAPPDATA%\Claude\Logs\main.log`. Upstream #14 reads that file only for the
-classic install, so for the Store install the switcher still has no log
-signal while it checks a switch or a new sign-in.
+Claude from the Store writes the main window's log to
+`%LOCALAPPDATA%\Claude\Logs\main.log`, like the classic install. Upstream #14
+reads that file only for the classic install; the fork reads it for the Store
+install too, with its data in the package or in `Claude-Data`, so the checks
+after a switch or a new sign-in see Claude's "logged in" and "logged out"
+lines again. A separate window keeps reading the log in its own data folder.
 
 ## Running a local build
 

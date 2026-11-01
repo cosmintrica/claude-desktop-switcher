@@ -302,6 +302,10 @@ sessions working in that window are listed first, as for the main window.
   that close and through a switch; **Continue a session** switched to the other
   account and opened the chosen session, then switched back and opened the
   first one.
+- Live with Claude Desktop 4.4212 on 2026-11-01: the account's separate window
+  started with a records folder of its own, the old junction gone. A new session
+  survived closing and reopening the window, a deleted session stayed deleted,
+  and both showed up in the main folder within one refresh.
 
 ## Based on upstream v1.2.2 (2026-11-01)
 

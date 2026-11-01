@@ -15,8 +15,10 @@ const (
 	rimTop    = 13
 )
 
-// PlusButton is where the button listing the accounts without a window sits.
-var PlusButton = image.Rect(80, 2, 91, 13)
+// PlusButton is where the button listing the accounts without a window sits:
+// on the rim, touching the glass, so the pointer reaches it without leaving
+// the aquarium.
+var PlusButton = image.Rect(66, 8, 77, 19)
 
 var bowlBack, bowlFront = drawBowl()
 
@@ -111,8 +113,8 @@ func drawBowl() (*image.NRGBA, *image.NRGBA) {
 	return back, front
 }
 
-// drawPlus draws the button that lists the accounts without a window.
-func drawPlus(dst *image.NRGBA, hover bool) {
+// DrawPlus draws the button that lists the accounts without a window.
+func DrawPlus(dst *image.NRGBA, hover bool) {
 	fill := rgb(58, 48, 70)
 	if hover {
 		fill = rgb(217, 119, 87)

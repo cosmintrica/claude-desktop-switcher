@@ -127,7 +127,8 @@ func TestFishAtFindsTheFishUnderThePointer(t *testing.T) {
 func TestDrawShowsWaterAndThePlusButton(t *testing.T) {
 	tank := NewTank(5)
 	dst := image.NewNRGBA(image.Rect(0, 0, BowlW, BowlH))
-	tank.Draw(dst, false)
+	tank.Draw(dst)
+	DrawPlus(dst, false)
 	if c := dst.NRGBAAt(48, 45); c.A == 0 || c.B < c.R {
 		t.Fatalf("the middle of the bowl is %+v, want water", c)
 	}
@@ -137,5 +138,21 @@ func TestDrawShowsWaterAndThePlusButton(t *testing.T) {
 	center := image.Pt((PlusButton.Min.X+PlusButton.Max.X)/2, (PlusButton.Min.Y+PlusButton.Max.Y)/2)
 	if c := dst.NRGBAAt(center.X, center.Y); c != rgb(255, 255, 255) {
 		t.Fatalf("the plus button's middle is %+v", c)
+	}
+}
+
+// The plus shows only while the pointer is on the aquarium, so it must touch
+// the glass: the pointer would otherwise leave the window on its way there.
+func TestThePlusButtonTouchesTheGlass(t *testing.T) {
+	touching := false
+	for y := PlusButton.Min.Y - 1; y <= PlusButton.Max.Y; y++ {
+		for x := PlusButton.Min.X - 1; x <= PlusButton.Max.X; x++ {
+			if bowlFront.NRGBAAt(x, y).A != 0 || bowlBack.NRGBAAt(x, y).A != 0 {
+				touching = true
+			}
+		}
+	}
+	if !touching {
+		t.Fatal("the plus button floats apart from the bowl")
 	}
 }

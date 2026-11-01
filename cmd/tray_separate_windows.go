@@ -179,9 +179,9 @@ func (s *trayState) openSeparateWindow(name string) {
 		}
 	}
 	if open, err := runner.SeparateWindows(); err == nil && !open[normalizedFolder(folder)] {
-		if err := s.copyWorktreeLeases(name, folder); err != nil {
+		if err := s.prepareSeparateWindow(name, folder); err != nil {
 			s.setStatus("Could not open a separate window: " + err.Error())
-			trayWarning("Could not open a separate window", "The worktree folders of "+label+"'s sessions could not be prepared for the window.\n\n"+err.Error())
+			trayWarning("Could not open a separate window", "The sessions of "+label+" could not be prepared for the window.\n\n"+err.Error())
 			return
 		}
 	}
@@ -241,7 +241,11 @@ func (s *trayState) separateWindowWith(name string) (string, bool) {
 	return "", false
 }
 
-func (s *trayState) copyWorktreeLeases(name, folder string) error {
+// Claude refuses to save its records through a link, so a separate window
+// keeps a records folder of its own. Before it starts, whatever it saved last
+// time goes to the main folder, then its account's sessions come back from
+// there with the worktree reservations they hold.
+func (s *trayState) prepareSeparateWindow(name, folder string) error {
 	appData, err := s.platform.AppDataPath()
 	if err != nil {
 		return err
@@ -250,7 +254,61 @@ func (s *trayState) copyWorktreeLeases(name, folder string) error {
 	if err != nil {
 		return err
 	}
-	return sessions.CopyWorktreeLeases(appData, folder, profileAccount(profiles, name))
+	account := profile.AccountUUIDHashAt(folder)
+	if account == "" {
+		account = profileAccount(profiles, name)
+	}
+	if err := sessions.UnlinkRecords(folder); err != nil {
+		return err
+	}
+	if account != profile.AccountUUIDHashAt(appData) {
+		if _, err := sessions.MirrorAccount(folder, appData, account); err != nil {
+			return err
+		}
+	}
+	if _, err := sessions.MirrorAccount(appData, folder, account); err != nil {
+		return err
+	}
+	return sessions.CopyWorktreeLeases(appData, folder, account)
+}
+
+// What a separate window saves is copied to the main folder on every refresh,
+// so Continue a session lists it and the main window has it after a switch.
+// The account signed in to the main window is left to that window.
+func (s *trayState) syncSeparateWindows() {
+	if _, ok := s.platform.(platform.SeparateWindowRunner); !ok || s.backgroundReadsPaused() {
+		return
+	}
+	appData, err := s.platform.AppDataPath()
+	if err != nil {
+		return
+	}
+	profiles, err := s.store.List()
+	if err != nil {
+		return
+	}
+	mainAccount := profile.AccountUUIDHashAt(appData)
+	message := ""
+	for _, meta := range profiles {
+		folder, err := separateWindowFolder(meta.Name)
+		if err != nil {
+			continue
+		}
+		account := profile.AccountUUIDHashAt(folder)
+		if account == "" || account == mainAccount {
+			continue
+		}
+		if _, err := sessions.MirrorAccount(folder, appData, account); err != nil && !errors.Is(err, sessions.ErrLinked) {
+			message = "Could not copy the sessions of a separate window: " + err.Error()
+		}
+	}
+	s.mu.Lock()
+	changed := message != s.separateSyncErr
+	s.separateSyncErr = message
+	s.mu.Unlock()
+	if changed && message != "" {
+		s.setStatus(message)
+	}
 }
 
 func profileAccount(profiles []profile.Meta, name string) string {

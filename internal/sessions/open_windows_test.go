@@ -3,10 +3,45 @@
 package sessions
 
 import (
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/TinoA/claude-desktop-switcher/internal/profile"
 )
+
+// An older switcher linked a separate window's records folder to the main one
+// with a directory junction; Claude could not save through it.
+func TestUnlinkRecordsReplacesALinkWithoutTouchingTheMainFolder(t *testing.T) {
+	main, window := t.TempDir(), t.TempDir()
+	writeRecordFiles(t, main, accountA, map[string]fileAt{"local_a.json": {"main", time.Unix(1792000000, 0)}})
+	link := filepath.Join(window, recordsDirName)
+	if output, err := exec.Command("cmd", "/c", "mklink", "/J", link, filepath.Join(main, recordsDirName)).CombinedOutput(); err != nil {
+		t.Fatalf("mklink: %v %s", err, output)
+	}
+	if _, err := MirrorAccount(window, main, profile.AccountUUIDHash(accountA)); !errors.Is(err, ErrLinked) {
+		t.Fatalf("mirroring through a link = %v, want ErrLinked", err)
+	}
+
+	if err := UnlinkRecords(window); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(link); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the link is still there: %v", err)
+	}
+	if got := recordFiles(t, main); got[accountA+"/"+org+"/local_a.json"] != "main" {
+		t.Fatalf("the main records changed: %v", got)
+	}
+	if copied, err := MirrorAccount(main, window, profile.AccountUUIDHash(accountA)); err != nil || copied != 1 {
+		t.Fatalf("filling the window = %d, %v", copied, err)
+	}
+	if got := recordFiles(t, window); got[accountA+"/"+org+"/local_a.json"] != "main" {
+		t.Fatalf("window records = %v", got)
+	}
+}
 
 func TestReadingARecordDoesNotStopClaudeFromDeletingIt(t *testing.T) {
 	dir := t.TempDir()

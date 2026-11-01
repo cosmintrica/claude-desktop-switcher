@@ -220,18 +220,32 @@ holds Claude's data, the same way Claude does. The sign-in keys in
 Claude keeps the Code tab's session records in its data folder
 (`claude-code-sessions\<account>\<org>\local_*.json`), so a separate window
 opened with an empty list even for an account with many sessions (seen on
-2026-10-24 with Claude 3.6556). Before it starts a separate window that is not
-running, the switcher now makes that window's `claude-code-sessions` a
-directory junction to the main window's folder (a junction needs neither
-administrator rights nor developer mode). Records and deletion markers the
-window had made in a folder of its own move to the main folder first; a file
-the main folder already has, and everything else, stays in
-`claude-code-sessions.before-sharing-<time>`. When the main folder moves, the
-link is pointed at the new place the next time the window opens. Each account
-now shows the same sessions, and runs its scheduled tasks, in whichever window
-it is open in.
+2026-10-24 with Claude 3.6556).
 
-Two windows must then never hold the same account. Choosing an account in
+The first fix (2026-10-24, d3512ac) made the window's `claude-code-sessions` a
+directory junction to the main window's folder. Claude reads through such a
+link but refuses to write through it: its private-file writer opens the
+temporary file with `O_EXCL` and checks the path, and every save failed with
+`EEXIST`. From 2026-10-25 to 2026-11-01 nothing the separate windows did was
+saved: 12 new contact@ sessions and 2 claude1@ sessions lived only in memory
+and left the list when Claude restarted after its update to 4.4212. Their
+conversations were safe in `~/.claude/projects`, and their records were
+rebuilt from the windows' logs ("Mapping internal session ... to CLI session
+...") and the conversations.
+
+Now each separate window keeps a records folder of its own, and the switcher
+copies one account's files between it and the main folder: the records, the
+deletion markers, `scheduled-tasks.json` and `archived-sessions.idx`. The copy
+changed last wins and keeps its source's time, a deletion marker removes the
+record on the other side, and nothing is copied into a folder whose Claude
+holds that account. Before a window that is not running starts, a link left by
+the first fix is removed (the main folder is untouched), what the window saved
+before goes to the main folder, then the account's sessions come back from it.
+While a window runs, what it saves reaches the main folder on every tray
+refresh (10 s) and right before a switch, so **Continue a session** lists it
+and the main window has it after the account moves there.
+
+Two windows must never hold the same account. Choosing an account in
 **Accounts** while it is signed in to a separate window offers to bring that
 window forward instead of switching the main window to it. **Continue a
 session** for such an account opens the session in its separate window, without
@@ -247,12 +261,12 @@ window starts, it therefore receives the main window's reservations for its
 account's sessions (only those not yet in its own file, never the spare pool
 or folders still being created). Reservations a window makes for new sessions
 stay in its own file; when that account opens in the main window again, Claude
-3 leases such a folder back in place if its branch is unchanged. The question
-about busy sessions before a switch now counts only the sessions of the account
-signed in to the main window, because the records are shared and separate
-windows keep running. Sidebar groups and starred sessions stay per window.
-Guarding tests: `TestShareSessionRecords*`, `TestCopyWorktreeLeases*`,
-`TestWorkingLeavesOutSessionsOfAccountsInSeparateWindows`,
+leases such a folder back in place if its branch is unchanged. The question
+about busy sessions before a switch counts only the sessions of the account
+signed in to the main window, because separate windows keep running. Sidebar
+groups and starred sessions stay per window. Guarding tests:
+`TestMirrorAccount*`, `TestUnlinkRecordsReplacesALinkWithoutTouchingTheMainFolder`,
+`TestCopyWorktreeLeases*`, `TestWorkingLeavesOutSessionsOfAccountsInSeparateWindows`,
 `TestSeparateWindowInUsePrompt`, `TestContinueMenuTitleSaysWhereTheAccountIsOpen`.
 
 ### A switch always asks first

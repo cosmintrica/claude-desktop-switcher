@@ -239,6 +239,7 @@ func (s *trayState) continueSession(name string, session sessions.Session) {
 			return
 		}
 	}
+	s.syncSeparateWindows()
 	if !s.beginSwitch() {
 		s.setStatus("Wait for the current operation to finish")
 		return

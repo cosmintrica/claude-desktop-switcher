@@ -74,6 +74,7 @@ type trayState struct {
 	separateShown      map[string]separateWindowState
 	sessionReader      *sessions.Reader
 	sessionReadErr     string
+	separateSyncErr    string
 	workflow           *addWorkflow
 	claudeInstalled    bool
 	claudeRunning      bool
@@ -1239,6 +1240,7 @@ func (s *trayState) loadAccounts() {
 			}
 		}
 	}
+	s.syncSeparateWindows()
 	recent, recentRead := s.readRecentSessions(profiles, active)
 	separate := s.readSeparateWindows(profiles)
 
@@ -1438,6 +1440,7 @@ func (s *trayState) watchAccount(item *systray.MenuItem, name string, stop <-cha
 				continue
 			}
 		}
+		s.syncSeparateWindows()
 		if !s.beginSwitch() {
 			s.setStatus("Wait for automatic account setup to finish")
 			continue

@@ -335,11 +335,164 @@ func hostedBy(appData, account, id string) bool {
 	return false
 }
 
+// ErrLinked marks a records folder an older switcher linked to the main one.
+var ErrLinked = errors.New("the session records folder is a link")
+
+// Claude refuses to save its records through a link, a directory junction
+// included, so each separate window keeps a records folder of its own and the
+// switcher copies an account's files between it and the main folder. The copy
+// changed last wins, and a deletion marker removes the record on the other
+// side. Neither side's Claude may hold the account while it is copied into.
+func MirrorAccount(fromData, toData, account string) (int, error) {
+	from := filepath.Join(fromData, recordsDirName)
+	to := filepath.Join(toData, recordsDirName)
+	if linked(from) || linked(to) {
+		return 0, ErrLinked
+	}
+	if account == "" {
+		return 0, nil
+	}
+	accountDirs, err := os.ReadDir(from)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	changed := 0
+	for _, accountDir := range accountDirs {
+		if !accountDir.IsDir() || profile.AccountUUIDHash(accountDir.Name()) != account {
+			continue
+		}
+		orgDirs, err := os.ReadDir(filepath.Join(from, accountDir.Name()))
+		if err != nil {
+			return changed, err
+		}
+		for _, orgDir := range orgDirs {
+			if !orgDir.IsDir() {
+				continue
+			}
+			count, err := mirrorFolder(filepath.Join(from, accountDir.Name(), orgDir.Name()), filepath.Join(to, accountDir.Name(), orgDir.Name()))
+			changed += count
+			if err != nil {
+				return changed, err
+			}
+		}
+	}
+	return changed, nil
+}
+
+// Claude names a deleted session's marker after the record without its
+// "local_" prefix, and after its CLI conversation.
+func mirrorFolder(from, to string) (int, error) {
+	entries, err := os.ReadDir(from)
+	if err != nil {
+		return 0, err
+	}
+	deleted := make(map[string]bool)
+	for _, entry := range entries {
+		if stem, ok := strings.CutPrefix(entry.Name(), "deleted_"); ok {
+			deleted[stem] = true
+		}
+	}
+	changed := 0
+	for _, entry := range entries {
+		name := entry.Name()
+		if !entry.Type().IsRegular() {
+			continue
+		}
+		if stem, ok := strings.CutPrefix(name, "deleted_"); ok {
+			if err := os.Remove(filepath.Join(to, "local_"+stem+".json")); err == nil {
+				changed++
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return changed, err
+			}
+		} else if stem, ok := strings.CutSuffix(strings.TrimPrefix(name, "local_"), ".json"); ok && strings.HasPrefix(name, "local_") {
+			if deleted[stem] || exists(filepath.Join(to, "deleted_"+stem)) {
+				continue
+			}
+		} else if name != "scheduled-tasks.json" && name != "archived-sessions.idx" {
+			continue
+		}
+		copied, err := copyIfNewer(filepath.Join(from, name), filepath.Join(to, name))
+		if copied {
+			changed++
+		}
+		if err != nil {
+			return changed, err
+		}
+	}
+	return changed, nil
+}
+
+// The copy keeps the source's time, so the side Claude changed last stays the
+// newer one.
+func copyIfNewer(from, to string) (bool, error) {
+	source, err := os.Stat(from)
+	if err != nil {
+		return false, err
+	}
+	if target, err := os.Stat(to); err == nil && !target.ModTime().Before(source.ModTime()) {
+		return false, nil
+	}
+	data, err := readShared(from)
+	if err != nil {
+		return false, err
+	}
+	if err := writeAtomic(to, data); err != nil {
+		return false, err
+	}
+	return true, os.Chtimes(to, source.ModTime(), source.ModTime())
+}
+
+// UnlinkRecords removes the link an older switcher put in a separate window's
+// data folder in place of its records folder; the main folder is untouched.
+func UnlinkRecords(windowData string) error {
+	link := filepath.Join(windowData, recordsDirName)
+	if !linked(link) {
+		return nil
+	}
+	return os.Remove(link)
+}
+
+func linked(path string) bool {
+	_, err := os.Readlink(path)
+	return err == nil
+}
+
+func exists(path string) bool {
+	_, err := os.Lstat(path)
+	return err == nil
+}
+
+// Claude's loader reads only local_*.json, so the temporary name is never
+// taken for a record.
+func writeAtomic(path string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	temp, err := os.CreateTemp(filepath.Dir(path), ".switcher-*")
+	if err != nil {
+		return err
+	}
+	_, err = temp.Write(data)
+	if closeErr := temp.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = os.Rename(temp.Name(), path)
+	}
+	if err != nil {
+		_ = os.Remove(temp.Name())
+	}
+	return err
+}
+
 // Claude reserves each worktree folder for one session in git-worktrees.json,
 // one file per data folder, and gives a session whose reservation is missing a
 // fresh worktree when the folder has moved to another branch. A separate window
-// shares the main window's session records, so before it starts it receives
-// the main window's reservations for its account's sessions.
+// receives the main window's reservations for its account's sessions before it
+// starts.
 func CopyWorktreeLeases(mainData, windowData, account string) error {
 	ids := accountSessionIDs(filepath.Join(mainData, recordsDirName), account)
 	if len(ids) == 0 {
@@ -402,24 +555,7 @@ func CopyWorktreeLeases(mainData, windowData, account string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(windowData, 0o700); err != nil {
-		return err
-	}
-	temp, err := os.CreateTemp(windowData, "."+worktreesFileName+"-*")
-	if err != nil {
-		return err
-	}
-	_, err = temp.Write(out)
-	if closeErr := temp.Close(); err == nil {
-		err = closeErr
-	}
-	if err == nil {
-		err = os.Rename(temp.Name(), path)
-	}
-	if err != nil {
-		_ = os.Remove(temp.Name())
-	}
-	return err
+	return writeAtomic(path, out)
 }
 
 func accountSessionIDs(root, account string) map[string]bool {

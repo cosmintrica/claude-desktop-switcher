@@ -196,6 +196,22 @@ func (s *trayState) watchCloseItem(item *systray.MenuItem, name string) {
 }
 
 func (s *trayState) closeSeparateWindow(name string) {
+	folder, err := separateWindowFolder(name)
+	if err != nil {
+		return
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		if working := sessions.Working(filepath.Join(home, ".claude"), folder); len(working) > 0 &&
+			!confirmStoppingWork("Close the separate window of "+s.cachedProfileDisplayName(name)+"?", "You can continue these sessions after it opens again.", "Close anyway?", working) {
+			return
+		}
+	}
+	s.closeSeparateWindowNow(name, false)
+}
+
+// closeSeparateWindowNow closes the window without asking; quiet leaves the
+// progress to the aquarium.
+func (s *trayState) closeSeparateWindowNow(name string, quiet bool) {
 	if s.initializingSnapshot() || s.switchingSnapshot() || s.workflowSnapshot() != nil {
 		s.setStatus("Wait for the current operation to finish")
 		return
@@ -209,14 +225,8 @@ func (s *trayState) closeSeparateWindow(name string) {
 		return
 	}
 	label := s.cachedProfileDisplayName(name)
-	if home, err := os.UserHomeDir(); err == nil {
-		if working := sessions.Working(filepath.Join(home, ".claude"), folder); len(working) > 0 &&
-			!confirmStoppingWork("Close the separate window of "+label+"?", "You can continue these sessions after it opens again.", "Close anyway?", working) {
-			return
-		}
-	}
 	s.setStatus("Closing the separate window of " + label)
-	card := startTerminalCard("claude quit "+label, "closing the window", 0.1)
+	card := terminalCardUnless(quiet, "claude quit "+label, "closing the window", 0.1)
 	err = runner.CloseSeparateWindow(folder)
 	card.Close()
 	if err != nil {
@@ -265,6 +275,12 @@ func (s *trayState) watchSeparateItem(item *systray.MenuItem, name string, stop 
 }
 
 func (s *trayState) openSeparateWindow(name string) {
+	s.openSeparateWindowWith(name, false)
+}
+
+// openSeparateWindowWith opens the account's separate window; quiet leaves the
+// progress to the aquarium.
+func (s *trayState) openSeparateWindowWith(name string, quiet bool) {
 	if s.initializingSnapshot() || s.switchingSnapshot() || s.workflowSnapshot() != nil {
 		s.setStatus("Wait for the current operation to finish")
 		return
@@ -297,7 +313,7 @@ func (s *trayState) openSeparateWindow(name string) {
 		}
 	}
 	s.setStatus("Opening a separate window for " + label)
-	card := startTerminalCard("claude window "+label, "starting Claude", 0.2)
+	card := terminalCardUnless(quiet, "claude window "+label, "starting Claude", 0.2)
 	shown := time.Now()
 	err = runner.OpenSeparateWindow(folder, "")
 	if err == nil {

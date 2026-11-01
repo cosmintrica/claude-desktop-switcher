@@ -233,6 +233,15 @@ type cardWindow struct {
 	lineStep  int
 }
 
+// terminalCardUnless is the terminal card, or a card that shows nothing when the
+// aquarium draws the progress itself.
+func terminalCardUnless(quiet bool, command, step string, progress float64) *switchOverlay {
+	if quiet {
+		return &switchOverlay{}
+	}
+	return startTerminalCard(command, step, progress)
+}
+
 func startTerminalCard(command, step string, progress float64) *switchOverlay {
 	overlay := &switchOverlay{ready: make(chan error, 1), done: make(chan struct{}), card: newTerminalCard(command, step, progress)}
 	go runTerminalCard(overlay)

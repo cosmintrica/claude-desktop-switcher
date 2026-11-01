@@ -281,6 +281,23 @@ Desktop** still asks only while a session is working. Guarding tests:
 `TestSwitchPromptAsksEvenWhenNoSessionIsWorking`,
 `TestAddAccountPromptAsksBeforeClaudeCloses`.
 
+### The aquarium
+
+A small aquarium sits above the clock, drawn as pixel art. Each open Claude
+window is a fish in its account's colour, the crowned fish is the main window,
+and bubbles rise while a Claude Code session works in that window. The fish
+are voxel models drawn from eight angles (`internal/aquarium`), so they turn
+through them as they swim. Hovering a fish shows its account; a click shows
+or closes its window, asking first when a session is working. The plus on the
+rim lists the accounts without a window, to open one in a separate window or
+switch the main window to it. Closing a window makes its fish jump out, and
+the progress shows in the aquarium instead of the terminal card.
+
+The window never takes focus, its transparent pixels let clicks through, and
+it hides while a game, a video or a presentation runs in full screen. **Show
+aquarium** in the tray menu turns it off and on; the choice is kept in
+`~/.claude-swap/aquarium-off`.
+
 ### Close one Claude window at a time
 
 Claude's tray icons look the same for every window, so a white icon does not

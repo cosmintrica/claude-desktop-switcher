@@ -281,6 +281,16 @@ Desktop** still asks only while a session is working. Guarding tests:
 `TestSwitchPromptAsksEvenWhenNoSessionIsWorking`,
 `TestAddAccountPromptAsksBeforeClaudeCloses`.
 
+### Close one Claude window at a time
+
+Claude's tray icons look the same for every window, so a white icon does not
+tell which account it belongs to. While a separate window is open, **Close
+Claude Desktop** becomes a submenu that names each window's account, for
+example `claude@… (main window)` and `contact@… (separate window)`. A separate
+window closes the way the main one does: its window is asked to close, then its
+own process tree is ended, and the other windows stay open. Claude Code
+sessions working in that window are listed first, as for the main window.
+
 ### Verification of the third round
 
 - gofmt, `go mod tidy -diff`, `go vet ./...` and all package tests pass;

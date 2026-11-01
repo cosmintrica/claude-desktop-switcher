@@ -32,6 +32,7 @@ type LoginWindowObserver interface {
 type SeparateWindowRunner interface {
 	SeparateWindows() (map[string]bool, error)
 	OpenSeparateWindow(folder, link string) error
+	CloseSeparateWindow(folder string) error
 }
 
 // Current returns the Platform implementation for the running OS.

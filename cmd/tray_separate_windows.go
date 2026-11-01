@@ -122,9 +122,120 @@ func separateMenuState(label string, inMainWindow bool, state separateWindowStat
 	return title, enabled
 }
 
+// Claude's tray icons look the same for every window, so while a separate
+// window is open, Close Claude Desktop becomes a submenu naming each window's
+// account.
+func (s *trayState) updateCloseMenuLocked(profiles []profile.Meta, active string, enabled bool) {
+	if s.closeMenu == nil {
+		return
+	}
+	s.separateOpen = false
+	open := make(map[string]bool, len(profiles))
+	for _, meta := range profiles {
+		if !s.separateShown[meta.Name].open {
+			continue
+		}
+		s.separateOpen = true
+		open[meta.Name] = true
+		item, ok := s.closeItems[meta.Name]
+		if !ok {
+			item = s.closeMenu.AddSubMenuItem("", "Close this account's separate Claude window")
+			s.closeItems[meta.Name] = item
+			go s.watchCloseItem(item, meta.Name)
+		}
+		item.SetTitle(windowTitle(s.profileLabels[meta.Name], false))
+		if enabled {
+			item.Enable()
+		} else {
+			item.Disable()
+		}
+		item.Show()
+	}
+	for name, item := range s.closeItems {
+		if !open[name] {
+			item.Hide()
+		}
+	}
+	s.closeMain.SetTitle(windowTitle(s.profileLabels[active], true))
+	if enabled {
+		s.closeMain.Enable()
+	} else {
+		s.closeMain.Disable()
+	}
+	if s.claudeRunning {
+		s.closeMain.Show()
+	} else {
+		s.closeMain.Hide()
+	}
+	if s.separateOpen {
+		s.closeMenu.Show()
+	} else {
+		s.closeMenu.Hide()
+	}
+	if claudeItemVisible(s.claudeRunning, s.separateOpen) {
+		s.claude.Show()
+	} else {
+		s.claude.Hide()
+	}
+}
+
+func windowTitle(label string, main bool) string {
+	switch {
+	case main && label == "":
+		return "Main window"
+	case main:
+		return menuLabel(label) + " (main window)"
+	}
+	return menuLabel(label) + " (separate window)"
+}
+
+func (s *trayState) watchCloseItem(item *systray.MenuItem, name string) {
+	for range item.ClickedCh {
+		s.closeSeparateWindow(name)
+	}
+}
+
+func (s *trayState) closeSeparateWindow(name string) {
+	if s.initializingSnapshot() || s.switchingSnapshot() || s.workflowSnapshot() != nil {
+		s.setStatus("Wait for the current operation to finish")
+		return
+	}
+	runner, ok := s.platform.(platform.SeparateWindowRunner)
+	if !ok {
+		return
+	}
+	folder, err := separateWindowFolder(name)
+	if err != nil {
+		return
+	}
+	label := s.cachedProfileDisplayName(name)
+	if home, err := os.UserHomeDir(); err == nil {
+		if working := sessions.Working(filepath.Join(home, ".claude"), folder); len(working) > 0 &&
+			!confirmStoppingWork("Close the separate window of "+label+"?", "You can continue these sessions after it opens again.", "Close anyway?", working) {
+			return
+		}
+	}
+	s.setStatus("Closing the separate window of " + label)
+	card := startTerminalCard("claude quit "+label, "closing the window", 0.1)
+	err = runner.CloseSeparateWindow(folder)
+	card.Close()
+	if err != nil {
+		s.setStatus("Could not close the separate window: " + err.Error())
+		trayWarning("Could not close the separate window", err.Error())
+		return
+	}
+	s.refreshAccounts()
+}
+
 func (s *trayState) disableSeparateItemsLocked() {
 	for _, item := range s.separateItems {
 		item.Disable()
+	}
+	for _, item := range s.closeItems {
+		item.Disable()
+	}
+	if s.closeMain != nil {
+		s.closeMain.Disable()
 	}
 }
 

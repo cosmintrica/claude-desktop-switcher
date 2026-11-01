@@ -260,6 +260,31 @@ func TestMainInstanceIgnoresClaudeWindowsWithTheirOwnDataFolder(t *testing.T) {
 	}
 }
 
+func TestInstanceProcessesKeepOnlyTheChosenWindowsTree(t *testing.T) {
+	processes := []windowsProcess{
+		{pid: 100, parent: 4},
+		{pid: 101, parent: 100},
+		{pid: 200, parent: 50},
+		{pid: 201, parent: 200},
+		{pid: 202, parent: 201},
+	}
+	var asked []int
+	got := instanceProcesses(processes, func(root int) bool {
+		asked = append(asked, root)
+		return root == 200
+	})
+	var pids []int
+	for _, process := range got {
+		pids = append(pids, process.pid)
+	}
+	if want := []int{200, 201, 202}; !reflect.DeepEqual(pids, want) {
+		t.Fatalf("window processes = %v, want %v", pids, want)
+	}
+	if want := []int{100, 200}; !reflect.DeepEqual(asked, want) {
+		t.Fatalf("roots asked %v, want %v", asked, want)
+	}
+}
+
 func TestMainInstanceSurvivesAParentLoop(t *testing.T) {
 	processes := []windowsProcess{{pid: 1, parent: 2}, {pid: 2, parent: 1}}
 	if got := mainInstanceProcesses(processes, func(int) bool { return false }); len(got) != 2 {

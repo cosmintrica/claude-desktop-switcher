@@ -36,16 +36,17 @@
 </p>
 
 > [!NOTE]
-> **About this fork.** This fork adds stability fixes found while switching
-> accounts every day with Claude Desktop from the Microsoft Store: a switch no
-> longer fails with "Access is denied", the screen is no longer dimmed during a
-> switch, the tray no longer stops after many window checks, a maximized Claude
-> window stays maximized, and the executable now opens from a double-click or a
-> desktop shortcut. It also keeps profile metadata inside its own folder and
-> preserves originals when a rollback fails. The download buttons below point to
-> the original project's releases, which do not include these fixes yet.
-> Everything that was found, changed and tested is described in
-> [Changes in this fork](docs/fork-changes.md).
+> **About this fork.** This fork is made by [@cosmintrica](https://github.com/cosmintrica).
+> Its first switching fixes are part of the original project since v1.2.1
+> ([#17](https://github.com/OpenScz/claude-desktop-switcher/pull/17)). On top of
+> v1.2.2 it adds the Claude Code sessions of each account with **Continue a
+> session**, accounts opened in separate Claude windows with their own sessions,
+> a question before every switch, closing one Claude window at a time, an
+> aquarium above the clock with one fish per Claude window, and support for
+> Claude 3 and 4 from the Microsoft Store (their new data folder and log). The
+> download buttons below point to the original project's releases, which do not
+> include these additions. Everything that was found, changed and tested is
+> described in [Changes in this fork](docs/fork-changes.md).
 
 ## Install in a minute
 

@@ -1,6 +1,7 @@
 # Changes in this fork
 
-This fork of [OpenScz/claude-desktop-switcher](https://github.com/OpenScz/claude-desktop-switcher)
+This fork of [OpenScz/claude-desktop-switcher](https://github.com/OpenScz/claude-desktop-switcher),
+made by [@cosmintrica](https://github.com/cosmintrica),
 collects fixes found while using Claude Desktop Switcher every day on
 Windows 11 with Claude Desktop from the Microsoft Store (MSIX). It has no
 installer releases; the builds were made locally from source.
@@ -10,7 +11,7 @@ installer releases; the builds were made locally from source.
 | `main` | Everything below, plus this page |
 | `fix/stable-switching` | The code and documentation changes for the original project |
 | `codex/harden-profile-import-and-rollback` | The first round, proposed in [OpenScz/claude-desktop-switcher#16](https://github.com/OpenScz/claude-desktop-switcher/pull/16) |
-| `feat/account-sessions` | The third round, the **Continue a session** menu |
+| `feat/account-sessions` | The third round: sessions per account, separate windows, the aquarium |
 
 ## First round: profile import and rollback (2026-10-18)
 

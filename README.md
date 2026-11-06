@@ -42,7 +42,8 @@
 > v1.2.2 it adds the Claude Code sessions of each account with **Continue a
 > session**, accounts opened in separate Claude windows with their own sessions,
 > a question before every switch, closing one Claude window at a time, an
-> aquarium above the clock with one fish per Claude window, and support for
+> aquarium above the clock with one fish per Claude window, **Start at login**,
+> a fishbowl icon, and support for
 > Claude 3 and 4 from the Microsoft Store (their new data folder and log). The
 > download buttons below point to the original project's releases, which do not
 > include these additions. Everything that was found, changed and tested is

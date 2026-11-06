@@ -294,10 +294,42 @@ rim lists the accounts without a window, to open one in a separate window or
 switch the main window to it. Closing a window makes its fish jump out, and
 the progress shows in the aquarium instead of the terminal card.
 
-The window never takes focus, its transparent pixels let clicks through, and
-it hides while a game, a video or a presentation runs in full screen. **Show
-aquarium** in the tray menu turns it off and on; the choice is kept in
+The window never takes focus and its transparent pixels let clicks through.
+It hides while the window in front fills its screen without a title bar: a
+game, a video or a presentation. Maximized windows keep their title bar, and
+the desktop, Alt+Tab and Task View belong to Explorer, so none of them hide it.
+Windows' own notification state is no longer asked: it does not say which
+screen is full or whether that window is in front. Every two seconds the
+aquarium also checks the windows above its bowl and comes back in front when
+Windows has dropped its always-on-top flag, when the desktop has come over it,
+or when another program's always-on-top window covers it. Menus, tooltips,
+click-through overlays and Explorer's pop-ups stay in front. Each hide, return
+and comeback writes one line to the tray log, with the program that caused it.
+**Show aquarium** in the tray menu turns it off and on; the choice is kept in
 `~/.claude-swap/aquarium-off`.
+
+### Start at login
+
+**Start at login** in the tray menu starts the switcher when you sign in to
+Windows. It writes a `Claude Desktop Switcher` value with this copy's path and
+`tray` under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. The tick
+follows what Windows will do: the installer's Startup shortcut counts as on,
+and turning it off removes that shortcut too; a switch-off in Settings > Apps >
+Startup shows as off, and turning it on in the menu clears that switch-off.
+While it is on, each start points the value at the copy that runs, so a new
+build under another name or in another folder is the one Windows starts.
+Guarding tests: `TestStartAtLogin*`.
+
+### A fishbowl icon
+
+The tray icon and the program's own icon are a pixel-art fishbowl with an
+orange fish, in the aquarium's colours. It is drawn at 16 pixels and scaled by
+whole pixels, so it stays sharp in the tray: the tray library loads the
+32-pixel frame and Windows halves it there. Before, the program had no icon of
+its own, so a shortcut to it showed Windows' blank program icon.
+`rsrc_windows_amd64.syso` and `rsrc_windows_arm64.syso` carry the icon into
+the program; `go run scripts/icon-resource.go` writes them again from
+`cmd/assets/windows-claude-swap-icon-v2.ico`.
 
 ### Close one Claude window at a time
 

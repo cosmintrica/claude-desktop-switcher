@@ -58,6 +58,7 @@ type trayState struct {
 	closeMenu          *systray.MenuItem
 	closeMain          *systray.MenuItem
 	aquariumItem       *systray.MenuItem
+	loginItem          *systray.MenuItem
 	aquarium           *aquariumWindow
 	add                *systray.MenuItem
 	delete             *systray.MenuItem
@@ -166,6 +167,8 @@ func (s *trayState) ready() {
 	s.closeMenu.Hide()
 	wantAquarium := aquariumWanted()
 	s.aquariumItem = systray.AddMenuItemCheckbox("Show aquarium", "Show the aquarium above the clock: one fish per Claude window", wantAquarium)
+	startsNow, _ := startsAtLogin()
+	s.loginItem = systray.AddMenuItemCheckbox("Start at login", "Start "+ProductName+" when you sign in to Windows", startsNow)
 	logs := systray.AddMenuItem("Open logs folder", "Open local diagnostic activity logs")
 	s.version = systray.AddMenuItem("Current version: "+displayVersion(Version), "Open the Claude Desktop Switcher GitHub repository")
 	quit := systray.AddMenuItem("Exit", "Close the tray icon")
@@ -178,6 +181,7 @@ func (s *trayState) ready() {
 	go s.handleClaude()
 	go s.handleCloseMain()
 	go s.handleAquariumItem()
+	go s.handleStartAtLogin()
 	go s.handleBackupExport(s.exportPassword, false)
 	go s.handleBackupExport(s.exportLocal, true)
 	go s.handleBackupImport()

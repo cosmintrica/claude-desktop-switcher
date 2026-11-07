@@ -310,12 +310,13 @@ and comeback writes one line to the tray log, with the program that caused it.
 
 ### Account limits
 
-Each account in **Accounts** shows its claude.ai limits, for example
-`work@… · 5h 40% · week 12%`, so an account with room can be picked before a
-switch. A limit at 80 % or more also says when it starts over:
-`5h 100% until 15:20`. In the aquarium, a fish's panel and the question before
-a switch show the two limits as bars, and the accounts without a window show
-their percents in colour: teal below 70 %, amber below 90 %, red from 90 %.
+Each account in **Accounts** shows how much of its claude.ai limits is used,
+for example `work@… · 5h 40% used · week 12% used`, so an account with room
+can be picked before a switch. A limit at 80 % or more also says when it
+starts over, `5h 92% used, resets 15:20`, and a used-up one says so:
+`week full until Mon 23:59`. In the aquarium, a fish's panel and the question
+before a switch show the two limits as bars, and the accounts without a window
+show their percents in colour: teal below 70 %, amber below 90 %, red from 90 %.
 
 The limits are read when the tray starts, after each switch for the account it
 left (its usage moved while it was in use), and on **Accounts > Refresh

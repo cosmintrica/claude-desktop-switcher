@@ -5,7 +5,29 @@ package cmd
 import (
 	"testing"
 	"time"
+
+	"github.com/TinoA/claude-desktop-switcher/internal/account"
 )
+
+func TestLimitsTextSaysHowMuchIsUsed(t *testing.T) {
+	now := time.Date(2026, 11, 8, 1, 15, 0, 0, time.Local)
+	soon := time.Date(2026, 11, 8, 4, 49, 0, 0, time.Local)
+	monday := time.Date(2026, 11, 9, 23, 59, 0, 0, time.Local)
+	tests := []struct {
+		usage account.Usage
+		want  string
+	}{
+		{account.Usage{FiveHour: account.Limit{Percent: 99, Resets: soon, Known: true}, Week: account.Limit{Percent: 51, Resets: monday, Known: true}}, "5h 99% used, resets 04:49  ·  week 51% used"},
+		{account.Usage{FiveHour: account.Limit{Known: true}, Week: account.Limit{Known: true}}, "5h 0% used  ·  week 0% used"},
+		{account.Usage{FiveHour: account.Limit{Known: true}, Week: account.Limit{Percent: 100, Resets: monday, Known: true}}, "5h 0% used  ·  week full until Mon 23:59"},
+		{account.Usage{Week: account.Limit{Percent: 100, Known: true}}, "week full"},
+	}
+	for _, test := range tests {
+		if got := limitsText(test.usage, now); got != test.want {
+			t.Fatalf("limitsText() = %q, want %q", got, test.want)
+		}
+	}
+}
 
 func TestCloseMovesIntoASubmenuWhileASeparateWindowIsOpen(t *testing.T) {
 	tests := []struct {

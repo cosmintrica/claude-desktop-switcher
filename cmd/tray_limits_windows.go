@@ -106,36 +106,55 @@ func (s *trayState) limitsSuffixLocked(name string, now time.Time) string {
 	return "  ·  " + limitsText(usage, now)
 }
 
-// limitsText reads like "5h 52% · week 11%", with the time a window starts
-// over once it is nearly used up.
+// limitsText reads like "5h 52% used  ·  week 11% used", with the time a
+// window starts over once it is nearly used up, and "full" once it is.
 func limitsText(usage account.Usage, now time.Time) string {
 	var parts []string
 	if limit := usage.FiveHour.At(now); limit.Known {
-		parts = append(parts, "5h "+limitText(limit, now))
+		parts = append(parts, "5h "+usedText(limit, now))
 	}
 	if limit := usage.Week.At(now); limit.Known {
-		parts = append(parts, "week "+limitText(limit, now))
+		parts = append(parts, "week "+usedText(limit, now))
 	}
 	text := ""
 	for i, part := range parts {
 		if i > 0 {
-			text += " · "
+			text += "  ·  "
 		}
 		text += part
 	}
 	return text
 }
 
+// usedText names the percent as the used part, so 0% reads as an account
+// with room and 100% as one that waits for its reset.
+func usedText(limit account.Limit, now time.Time) string {
+	resets := !limit.Resets.IsZero()
+	switch {
+	case limit.Percent >= 100 && resets:
+		return "full until " + resetTime(limit, now)
+	case limit.Percent >= 100:
+		return "full"
+	case limit.Percent >= 80 && resets:
+		return percentText(limit.Percent) + " used, resets " + resetTime(limit, now)
+	}
+	return percentText(limit.Percent) + " used"
+}
+
 func limitText(limit account.Limit, now time.Time) string {
 	text := percentText(limit.Percent)
 	if limit.Percent >= 80 && !limit.Resets.IsZero() {
-		layout := "15:04"
-		if limit.Resets.Sub(now) > 20*time.Hour {
-			layout = "Mon 15:04"
-		}
-		text += " until " + limit.Resets.Local().Format(layout)
+		text += " until " + resetTime(limit, now)
 	}
 	return text
+}
+
+func resetTime(limit account.Limit, now time.Time) string {
+	layout := "15:04"
+	if limit.Resets.Sub(now) > 20*time.Hour {
+		layout = "Mon 15:04"
+	}
+	return limit.Resets.Local().Format(layout)
 }
 
 func percentText(percent float64) string {

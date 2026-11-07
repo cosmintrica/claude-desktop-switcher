@@ -250,7 +250,7 @@ func (s *trayState) continueSession(name string, session sessions.Session) {
 
 func (s *trayState) switchAndContinue(name, label, link string) {
 	card := startTerminalCard("claude continue "+label, "closing Claude", 0.04)
-	err := switchProfileFromTray(name, s.store, s.platform, card, s.cachedProfileDisplayName)
+	err := s.switchProfile(name, card)
 	if err != nil {
 		card.Close()
 		s.endSwitch()

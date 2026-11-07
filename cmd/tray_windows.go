@@ -14,8 +14,10 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/TinoA/claude-desktop-switcher/internal/account"
 	"github.com/TinoA/claude-desktop-switcher/internal/platform"
 	"github.com/TinoA/claude-desktop-switcher/internal/profile"
 	"github.com/TinoA/claude-desktop-switcher/internal/sessions"
@@ -59,6 +61,9 @@ type trayState struct {
 	closeMain          *systray.MenuItem
 	aquariumItem       *systray.MenuItem
 	loginItem          *systray.MenuItem
+	limitsItem         *systray.MenuItem
+	limits             map[string]account.Usage
+	limitsReading      atomic.Bool
 	aquarium           *aquariumWindow
 	add                *systray.MenuItem
 	delete             *systray.MenuItem
@@ -148,6 +153,7 @@ func (s *trayState) ready() {
 	systray.SetTooltip(ProductName + " - Claude Desktop account switcher")
 
 	s.root = systray.AddMenuItem("Accounts", "Switch account")
+	s.limitsItem = s.root.AddSubMenuItem("Refresh limits", "Ask claude.ai for every account's 5-hour and weekly limits")
 	s.continueMenu = systray.AddMenuItem("Continue a session", "Open a recent Claude Code session on its account")
 	s.separateMenu = systray.AddMenuItem("Open in a separate window", "Run another account beside the main Claude window")
 	s.add = systray.AddMenuItem("Add account...", "Open Claude to sign in with another account")
@@ -176,12 +182,14 @@ func (s *trayState) ready() {
 	s.aquarium = startAquarium(s, wantAquarium)
 	s.loadAccounts()
 	s.restorePendingIfPresent()
+	go s.refreshLimits()
 
 	go s.handleAdd()
 	go s.handleClaude()
 	go s.handleCloseMain()
 	go s.handleAquariumItem()
 	go s.handleStartAtLogin()
+	go s.handleRefreshLimits()
 	go s.handleBackupExport(s.exportPassword, false)
 	go s.handleBackupExport(s.exportLocal, true)
 	go s.handleBackupImport()
@@ -1311,6 +1319,7 @@ func (s *trayState) loadAccounts() {
 		}
 	}
 	seen := make(map[string]bool, len(profiles))
+	now := time.Now()
 	for _, meta := range profiles {
 		seen[meta.Name] = true
 		label := accountLabel(meta)
@@ -1336,10 +1345,11 @@ func (s *trayState) loadAccounts() {
 			go s.watchDeleteAccount(deleteItem, meta.Name, stop)
 		}
 		isActive := running && active == meta.Name
+		limits := s.limitsSuffixLocked(meta.Name, now)
 		if isActive {
-			item.SetTitle("✓ " + label + " (in use)")
+			item.SetTitle("✓ " + label + " (in use)" + limits)
 		} else {
-			item.SetTitle(label)
+			item.SetTitle(label + limits)
 		}
 		if installed && !busy && !isActive {
 			item.Enable()
@@ -1507,7 +1517,7 @@ func (s *trayState) switchTo(name string, ask bool) {
 	s.setStatus("Switching to " + label + "...")
 	go func() {
 		card := startSwitchOverlay(label)
-		err := switchProfileFromTray(name, s.store, s.platform, card, s.cachedProfileDisplayName)
+		err := s.switchProfile(name, card)
 		card.Close()
 		if err == nil {
 			s.setTrustedActiveProfile(name)

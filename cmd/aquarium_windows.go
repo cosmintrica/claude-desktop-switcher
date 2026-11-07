@@ -16,6 +16,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/TinoA/claude-desktop-switcher/internal/account"
 	"github.com/TinoA/claude-desktop-switcher/internal/aquarium"
 	"github.com/TinoA/claude-desktop-switcher/internal/platform"
 	"github.com/TinoA/claude-desktop-switcher/internal/profile"
@@ -35,7 +36,7 @@ const (
 	aquariumGap         = 10
 	aquariumEdge        = 8
 	aquariumTopRoom     = 28
-	aquariumMinHeight   = 196
+	aquariumMinHeight   = 272
 	aquariumShowMessage = 0x8001
 	aquariumMaxListed   = 3
 
@@ -92,6 +93,9 @@ var (
 	buttonHover = color.NRGBA{R: 217, G: 119, B: 87, A: 255}
 	barStripe   = color.NRGBA{R: 232, G: 149, B: 111, A: 255}
 	tagInk      = color.NRGBA{R: 20, G: 15, B: 24, A: 255}
+	limitLow    = color.NRGBA{R: 96, G: 198, B: 190, A: 255}
+	limitMid    = color.NRGBA{R: 240, G: 200, B: 96, A: 255}
+	limitHigh   = color.NRGBA{R: 240, G: 110, B: 100, A: 255}
 	iconWhite   = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
 )
 
@@ -114,6 +118,7 @@ type aquariumAccount struct {
 	open    bool
 	main    bool
 	working []string
+	limits  account.Usage
 }
 
 type aquariumPanelKind int
@@ -883,6 +888,11 @@ func (a *aquariumWindow) drawPanel(panel aquariumPanel, accounts []aquariumAccou
 	case progressPanel:
 		who = panel.title
 	}
+	now := time.Now()
+	var limitRows []limitWindow
+	if panel.kind == fishPanel || panel.kind == confirmPanel && panel.action == "main" {
+		limitRows = limitWindows(account.limits, now)
+	}
 
 	lineHeight := a.textMask("Ag", "body").Rect.Dy() + a.px(2)
 	whoHeight := 0
@@ -897,6 +907,9 @@ func (a *aquariumWindow) drawPanel(panel aquariumPanel, accounts []aquariumAccou
 	}
 	rowHeight := max(aquarium.SpriteH*max(1, a.scale/2), a.px(26)) + a.px(6)
 	height := pad + whoHeight + len(lines)*lineHeight + pad
+	if len(limitRows) > 0 {
+		height += len(limitRows)*lineHeight + a.px(4)
+	}
 	switch panel.kind {
 	case fishPanel, confirmPanel:
 		height += a.px(8) + a.px(28)
@@ -905,6 +918,11 @@ func (a *aquariumWindow) drawPanel(panel aquariumPanel, accounts []aquariumAccou
 			height += lineHeight
 		}
 		height += len(closed) * rowHeight
+		for _, other := range closed {
+			if len(limitWindows(other.limits, now)) > 0 {
+				height += lineHeight
+			}
+		}
 	case progressPanel:
 		height += a.px(24)
 	}
@@ -928,6 +946,17 @@ func (a *aquariumWindow) drawPanel(panel aquariumPanel, accounts []aquariumAccou
 		titleHeight := a.textMask(title, "title").Rect.Dy() - 2
 		a.text(title, "title", textX, y+(whoHeight-a.px(6)-titleHeight)/2, panelText)
 		y += whoHeight
+	}
+	valueWidth := a.textWidth("100%", "body")
+	for _, row := range limitRows {
+		valueWidth = max(valueWidth, a.textWidth(limitText(row.limit, now), "body"))
+	}
+	for _, row := range limitRows {
+		a.limitBar(row, x, y, inner, lineHeight, valueWidth)
+		y += lineHeight
+	}
+	if len(limitRows) > 0 {
+		y += a.px(4)
 	}
 	for _, line := range lines {
 		a.text(line.text, "body", x, y, line.color)
@@ -961,6 +990,10 @@ func (a *aquariumWindow) drawPanel(panel aquariumPanel, accounts []aquariumAccou
 			buttonX := rect.Max.X - pad - openWidth - a.px(6) - mainWidth
 			buttonX += a.button("open", "plus", "open", other.key, buttonX, buttonY, true) + a.px(6)
 			a.button("main", "crown", "main", other.key, buttonX, buttonY, true)
+			if rows := limitWindows(other.limits, now); len(rows) > 0 {
+				a.limitLine(rows, rowX, y+rowHeight-a.px(6))
+				y += lineHeight
+			}
 			y += rowHeight
 		}
 	case progressPanel:
@@ -978,6 +1011,64 @@ func (a *aquariumWindow) drawPanel(panel aquariumPanel, accounts []aquariumAccou
 			}
 			a.fill(image.Rect(sx, bar.Min.Y, sx+1, bar.Max.Y), c)
 		}
+	}
+}
+
+type limitWindow struct {
+	name  string
+	limit account.Limit
+}
+
+// limitWindows lists the limits claude.ai reported for an account, as they
+// stand now.
+func limitWindows(usage account.Usage, now time.Time) []limitWindow {
+	var rows []limitWindow
+	if limit := usage.FiveHour.At(now); limit.Known {
+		rows = append(rows, limitWindow{"5h", limit})
+	}
+	if limit := usage.Week.At(now); limit.Known {
+		rows = append(rows, limitWindow{"week", limit})
+	}
+	return rows
+}
+
+func limitColor(percent float64) color.NRGBA {
+	switch {
+	case percent >= 90:
+		return limitHigh
+	case percent >= 70:
+		return limitMid
+	default:
+		return limitLow
+	}
+}
+
+// limitBar draws one limit as a name, a bar and the percent, with the time it
+// starts over once it is nearly used up. The bars of one panel end together.
+func (a *aquariumWindow) limitBar(row limitWindow, x, y, width, lineHeight, valueWidth int) {
+	nameWidth := a.textWidth("week", "body") + a.px(8)
+	value := limitText(row.limit, time.Now())
+	a.text(row.name, "body", x, y, panelMuted)
+	barHeight := a.px(6)
+	barY := y + (lineHeight-barHeight)/2
+	bar := image.Rect(x+nameWidth, barY, x+width-valueWidth-a.px(8), barY+barHeight)
+	a.fill(bar, panelBorder)
+	filled := bar.Min.X + int(math.Round(float64(bar.Dx())*min(max(row.limit.Percent, 0), 100)/100))
+	a.fill(image.Rect(bar.Min.X, bar.Min.Y, filled, bar.Max.Y), limitColor(row.limit.Percent))
+	a.text(value, "body", bar.Max.X+a.px(8), y, panelText)
+}
+
+// limitLine writes the limits on one line, the percents in their colours.
+func (a *aquariumWindow) limitLine(rows []limitWindow, x, y int) {
+	for i, row := range rows {
+		if i > 0 {
+			x += a.textWidth("  ", "body")
+		}
+		a.text(row.name+" ", "body", x, y, panelMuted)
+		x += a.textWidth(row.name+" ", "body")
+		value := percentText(row.limit.Percent)
+		a.text(value, "body", x, y, limitColor(row.limit.Percent))
+		x += a.textWidth(value, "body")
 	}
 }
 
@@ -1153,7 +1244,7 @@ func (s *trayState) aquariumAccountsLocked(profiles []profile.Meta, active strin
 	appData, _ := s.platform.AppDataPath()
 	accounts := make([]aquariumAccount, 0, len(profiles)+1)
 	for i, meta := range profiles {
-		account := aquariumAccount{key: meta.Name, label: s.profileLabels[meta.Name], palette: aquarium.Palettes[i%len(aquarium.Palettes)]}
+		account := aquariumAccount{key: meta.Name, label: s.profileLabels[meta.Name], palette: aquarium.Palettes[i%len(aquarium.Palettes)], limits: s.limits[meta.Name]}
 		if account.label == "" {
 			account.label = meta.Name
 		}

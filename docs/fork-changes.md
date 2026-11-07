@@ -364,6 +364,12 @@ window closes the way the main one does: its window is asked to close, then its
 own process tree is ended, and the other windows stay open. Claude Code
 sessions working in that window are listed first, as for the main window.
 
+Meanwhile the plain **Close Claude Desktop** row stays hidden. systray puts a
+hidden row back whenever its title or state changes, and adding or removing a
+row of the main menu closes that menu if it is open, so the refresh every 10
+seconds closed an open tray menu. A row that stays hidden is now only hidden
+again.
+
 ### Verification of the third round
 
 - gofmt, `go mod tidy -diff`, `go vet ./...` and all package tests pass;

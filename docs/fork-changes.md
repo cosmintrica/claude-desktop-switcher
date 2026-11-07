@@ -308,6 +308,29 @@ and comeback writes one line to the tray log, with the program that caused it.
 **Show aquarium** in the tray menu turns it off and on; the choice is kept in
 `~/.claude-swap/aquarium-off`.
 
+### Account limits
+
+Each account in **Accounts** shows its claude.ai limits, for example
+`work@… · 5h 40% · week 12%`, so an account with room can be picked before a
+switch. A limit at 80 % or more also says when it starts over:
+`5h 100% until 15:20`. In the aquarium, a fish's panel and the question before
+a switch show the two limits as bars, and the accounts without a window show
+their percents in colour: teal below 70 %, amber below 90 %, red from 90 %.
+
+The limits are read when the tray starts, after each switch for the account it
+left (its usage moved while it was in use), and on **Accounts > Refresh
+limits**. For each saved account the switcher opens the claude.ai sign-in kept
+in its Cookies copy with Claude's own key from `Local State` (unwrapped with
+DPAPI for this Windows user, then AES-GCM) and asks claude.ai's usage endpoint
+for the organization the account last used. This is the account-info code in
+`internal/account`, the one place that opens a cookie. The sign-in stays in
+memory for the request; only the percents and reset times are kept, in memory
+too. Each read writes one line per account to the tray log. Guarding tests:
+`TestWindowsDecryptorOpensTheSavedSignIn`, `TestWindowsDecryptorRefusesAnotherKey`,
+`TestUsageReadsTheFiveHourAndWeeklyWindows`, `TestLimitStartsOverAtItsReset`,
+`TestFetchUsage*`. Checked live on 2026-11-07: all three saved accounts
+answered with their 5-hour and weekly limits and reset times.
+
 ### Start at login
 
 **Start at login** in the tray menu starts the switcher when you sign in to

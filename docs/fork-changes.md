@@ -228,7 +228,7 @@ directory junction to the main window's folder. Claude reads through such a
 link but refuses to write through it: its private-file writer opens the
 temporary file with `O_EXCL` and checks the path, and every save failed with
 `EEXIST`. From 2026-10-25 to 2026-11-01 nothing the separate windows did was
-saved: 12 new private@ sessions and 2 office2@ sessions lived only in memory
+saved: 12 new sessions of one account and 2 of another lived only in memory
 and left the list when Claude restarted after its update to 4.4212. Their
 conversations were safe in `~/.claude/projects`, and their records were
 rebuilt from the windows' logs ("Mapping internal session ... to CLI session
@@ -359,7 +359,7 @@ the program; `go run scripts/icon-resource.go` writes them again from
 Claude's tray icons look the same for every window, so a white icon does not
 tell which account it belongs to. While a separate window is open, **Close
 Claude Desktop** becomes a submenu that names each window's account, for
-example `office@… (main window)` and `private@… (separate window)`. A separate
+example `work@… (main window)` and `personal@… (separate window)`. A separate
 window closes the way the main one does: its window is asked to close, then its
 own process tree is ended, and the other windows stay open. Claude Code
 sessions working in that window are listed first, as for the main window.

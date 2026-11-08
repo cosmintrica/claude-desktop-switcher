@@ -3,11 +3,39 @@ package account
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
+	"slices"
 	"time"
 )
 
-const usageEndpoint = "https://claude.ai/api/organizations/%s/usage"
+const (
+	usageEndpoint    = "https://claude.ai/api/organizations/%s/usage"
+	browserCheckWait = 5 * time.Second
+)
+
+// fetchEach asks for each account's limits one at a time, because claude.ai's
+// Cloudflare guard answers some requests that arrive together with a browser
+// check. An account that got the check is asked once more after wait.
+func fetchEach(paths map[string]string, fetch func(path string) (Usage, error), wait func()) map[string]UsageResult {
+	results := make(map[string]UsageResult, len(paths))
+	var checked []string
+	for _, name := range slices.Sorted(maps.Keys(paths)) {
+		usage, err := fetch(paths[name])
+		results[name] = UsageResult{Usage: usage, Err: err}
+		if errors.Is(err, errBrowserCheck) {
+			checked = append(checked, name)
+		}
+	}
+	if len(checked) > 0 {
+		wait()
+		for _, name := range checked {
+			usage, err := fetch(paths[name])
+			results[name] = UsageResult{Usage: usage, Err: err}
+		}
+	}
+	return results
+}
 
 // Limit is how much of one usage window an account has used, in percent, and
 // when that window starts over.

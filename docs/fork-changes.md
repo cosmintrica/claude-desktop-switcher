@@ -335,6 +335,17 @@ too. Each read writes one line per account to the tray log. Guarding tests:
 `TestFetchUsage*`, `TestLimitSummaryFitsOnOneRow`. Checked live on 2026-11-07: all three saved accounts
 answered with their 5-hour and weekly limits and reset times.
 
+The accounts are asked one at a time. On 2026-11-08 the tray asked for all
+five at once and claude.ai's Cloudflare guard answered some of them with
+`HTTP 403`, `cf-mitigated: challenge` and its "Just a moment..." page, a check
+that only a browser passes: two or three accounts showed no limits after each
+start, though their sign-ins were fine. Five requests sent together reproduced
+it; the same requests one after another all answered. Such an answer is now
+reported as a browser check, and the accounts that got one are asked once more
+after 5 seconds. Guarding tests: `TestFetchUsageRecognizesTheBrowserCheck`,
+`TestFetchEachAsksOneAtATimeAndOnceMoreAfterABrowserCheck`; checked live with
+the five saved accounts, which all answered.
+
 ### Start at login
 
 **Start at login** under **Settings and backup** starts the switcher when you sign in to

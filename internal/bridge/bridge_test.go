@@ -14,6 +14,8 @@ import (
 const bridgeSchema = `
 CREATE TABLE sessions (key TEXT PRIMARY KEY, short TEXT NOT NULL, session_id TEXT, name TEXT, account TEXT, pid INTEGER,
 	first_seen INTEGER NOT NULL, last_seen INTEGER NOT NULL, closed_at INTEGER, status TEXT);
+CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at INTEGER NOT NULL, from_key TEXT NOT NULL,
+	from_label TEXT NOT NULL, to_key TEXT, to_label TEXT, body TEXT NOT NULL, reply_to INTEGER, wake INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE receipts (message_id INTEGER NOT NULL, session_key TEXT NOT NULL, read_at INTEGER, woke_at INTEGER,
 	PRIMARY KEY (message_id, session_key));
 CREATE TABLE claims (resource TEXT PRIMARY KEY, label TEXT NOT NULL, kind TEXT NOT NULL, owner_key TEXT NOT NULL,
@@ -36,10 +38,18 @@ func TestReadShowsTheActiveSessionsAndWhatWaitsForThem(t *testing.T) {
 	}{
 		{bridgeSchema, nil},
 		{`INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, []any{"local_a", "a", "cli-a", "Site design", "office@", 101, ms(time.Hour), ms(10 * time.Second), nil, nil}},
-		{`INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, []any{"local_b", "b", "cli-b", "", "private@", 102, ms(time.Hour), ms(30 * time.Second), nil, nil}},
+		{`INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, []any{"local_b", "b", "cli-b", "", "private@", 102, ms(30 * time.Minute), ms(30 * time.Second), nil, nil}},
 		{`INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, []any{"local_c", "c", "cli-c", "Gone quiet", "office@", 103, ms(time.Hour), ms(5 * time.Minute), nil, nil}},
 		{`INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, []any{"local_d", "d", "cli-d", "Closed", "office@", 104, ms(time.Hour), ms(time.Second), ms(time.Second), nil}},
-		{`INSERT INTO receipts VALUES (1, 'local_a', NULL, NULL), (2, 'local_a', ?, NULL), (3, 'local_c', NULL, NULL)`, []any{ms(time.Minute)}},
+		// 1 to a, unread: counts. 2 to a, read. 3 to c, which is not active.
+		// 4 from a to everyone, after b joined, unread by b: counts once.
+		// 5 from c to everyone, read by a and b. 6 from a to everyone, before b joined.
+		{`INSERT INTO messages (id, created_at, from_key, from_label, to_key, body) VALUES
+			(1, ?, 'local_b', 'b', 'local_a', 'x'), (2, ?, 'local_b', 'b', 'local_a', 'x'), (3, ?, 'local_a', 'a', 'local_c', 'x'),
+			(4, ?, 'local_a', 'a', NULL, 'x'), (5, ?, 'local_c', 'c', NULL, 'x'), (6, ?, 'local_a', 'a', NULL, 'x')`,
+			[]any{ms(time.Minute), ms(time.Minute), ms(time.Minute), ms(10 * time.Minute), ms(10 * time.Minute), ms(45 * time.Minute)}},
+		{`INSERT INTO receipts VALUES (1, 'local_a', NULL, NULL), (2, 'local_a', ?, NULL), (3, 'local_c', NULL, NULL), (5, 'local_a', ?, NULL), (5, 'local_b', ?, NULL)`,
+			[]any{ms(time.Minute), ms(time.Minute), ms(time.Minute)}},
 		{`INSERT INTO claims VALUES ('f1', 'f1', 'file', 'local_a', NULL, ?, NULL), ('f2', 'f2', 'file', 'local_a', NULL, ?, ?), ('f3', 'f3', 'file', 'local_c', NULL, ?, NULL)`,
 			[]any{ms(time.Hour), ms(time.Hour), ms(time.Minute), ms(time.Hour)}},
 		{`INSERT INTO handoffs (created_at, from_key, from_label, title, body, status) VALUES (?, 'local_a', 'a', 'next', 'x', 'open'), (?, 'local_a', 'a', 'done', 'x', 'taken')`,
@@ -70,7 +80,7 @@ func TestReadShowsTheActiveSessionsAndWhatWaitsForThem(t *testing.T) {
 	}
 	want := State{
 		Sessions: []Session{{Name: "Site design", Account: "office@", Busy: true}, {Account: "private@"}},
-		Unread:   1,
+		Unread:   2,
 		Claims:   1,
 		Handoffs: 1,
 	}

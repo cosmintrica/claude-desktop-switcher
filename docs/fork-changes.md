@@ -417,8 +417,10 @@ sessions of every account on one computer talk. It keeps one SQLite file,
 exists, the tray shows a **Session bridge** row, for example
 `Session bridge: 5 sessions, 2 working`, and the icon's tooltip says the same.
 Its submenu lists each active session with its account and `working` or
-`idle`, then what waits for them: messages not read yet, files or tasks
-claimed, and handoffs nobody has taken. The rows are only read. A session is
+`idle`, then what waits for them: messages an active session has not read
+yet, counted as the bridge counts them (sent to it, or to every session since
+it joined), files or tasks claimed, and handoffs nobody has taken. The rows
+are only read. A session is
 active while it checked in within the last 2 minutes, as the bridge counts it,
 and it is working while Claude Code's own record of its process
 (`~/.claude/sessions/<pid>.json`) says `busy`. The tray opens the database

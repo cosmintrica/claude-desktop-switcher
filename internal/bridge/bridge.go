@@ -24,7 +24,7 @@ const liveFor = 2 * time.Minute
 // State is what the bridge knows now.
 type State struct {
 	Sessions []Session
-	Unread   int // direct messages an active session has not read yet
+	Unread   int // messages some active session has not read yet
 	Claims   int // files, folders or tasks held by active sessions
 	Handoffs int // handoffs nobody has taken yet
 }
@@ -75,8 +75,12 @@ func Read(home, claudeDir string, now time.Time) (State, error) {
 		query string
 		args  []any
 	}{
-		{&state.Unread, `SELECT COUNT(*) FROM receipts r JOIN sessions s ON s.key = r.session_key
-			WHERE s.closed_at IS NULL AND s.last_seen >= ? AND r.read_at IS NULL`, []any{live}},
+		// As claude-bridge counts a session's unread messages: those sent to it,
+		// and those sent to everyone by another session since it joined, that it
+		// has not marked read.
+		{&state.Unread, `SELECT COUNT(DISTINCT m.id) FROM messages m JOIN sessions s ON s.closed_at IS NULL AND s.last_seen >= ?
+			WHERE (m.to_key = s.key OR (m.to_key IS NULL AND m.from_key <> s.key AND m.created_at >= s.first_seen))
+			AND NOT EXISTS (SELECT 1 FROM receipts r WHERE r.message_id = m.id AND r.session_key = s.key AND r.read_at IS NOT NULL)`, []any{live}},
 		{&state.Claims, `SELECT COUNT(*) FROM claims c JOIN sessions s ON s.key = c.owner_key
 			WHERE s.closed_at IS NULL AND s.last_seen >= ? AND (c.expires_at IS NULL OR c.expires_at > ?)`, []any{live, now.UnixMilli()}},
 		{&state.Handoffs, `SELECT COUNT(*) FROM handoffs WHERE status = 'open'`, nil},

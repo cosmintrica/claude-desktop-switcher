@@ -311,14 +311,13 @@ and comeback writes one line to the tray log, with the program that caused it.
 
 ### Account limits
 
-Each account's row shows how much of its claude.ai limits is used, as numbers
-only, `5h  40%     week  12%`, so an account with room can be picked before a
-switch. Once a window is full, the time the account can be used again comes
-first: `04:49     5h 100%     week  40%`. Windows right-aligns what follows a
-tab in a menu row, and Segoe UI draws digits and figure spaces (U+2007) equally
-wide, so a percent padded with figure spaces to the width of `100%` lines up
-with the others. Bars made of characters were tried first and read worse. The
-tray log keeps the words, for example `5h 92% used, resets 15:20`. In the aquarium, a fish's panel and the question
+Each account's submenu starts with one row of how much of its claude.ai limits
+is used, `5h 40% · week 12%`, so an account with room can be picked before a
+switch. A full window adds the time it starts over, `week 100% (Tue 00:00)`,
+and a click on that row reads the limits again. Two earlier versions put the
+limits on the account's own row, as bars made of characters and then as
+numbers in a column; both made the menu too wide. The tray log keeps the
+words, for example `5h 92% used, resets 15:20`. In the aquarium, a fish's panel and the question
 before a switch show the two limits as bars, and the accounts without a window
 show their percents in colour: teal below 70 %, amber below 90 %, red from 90 %.
 
@@ -333,8 +332,7 @@ memory for the request; only the percents and reset times are kept, in memory
 too. Each read writes one line per account to the tray log. Guarding tests:
 `TestWindowsDecryptorOpensTheSavedSignIn`, `TestWindowsDecryptorRefusesAnotherKey`,
 `TestUsageReadsTheFiveHourAndWeeklyWindows`, `TestLimitStartsOverAtItsReset`,
-`TestFetchUsage*`, `TestLimitNumbersSayHowMuchIsUsed`,
-`TestPaddedPercentIsAsWideAsAFullOne`. Checked live on 2026-11-07: all three saved accounts
+`TestFetchUsage*`, `TestLimitSummaryFitsOnOneRow`. Checked live on 2026-11-07: all three saved accounts
 answered with their 5-hour and weekly limits and reset times.
 
 ### Start at login
@@ -382,8 +380,8 @@ The menu had grown to 14 rows, and the same accounts were listed in four
 submenus (**Accounts**, **Continue a session**, **Open in a separate window**,
 **Delete account...**). Now each saved account is one row at the top, ticked
 while it is open, with where it is open, `(main window)` or
-`(separate window)`, and how much of its limits is used. Its submenu holds what can be done
-with it: **Switch to this account** and **Open in a separate window** while it
+`(separate window)`. Its submenu starts with how much of its limits is used
+and holds what can be done with it: **Switch to this account** and **Open in a separate window** while it
 is closed, **Show its window** and **Close its window** while it is open,
 **Continue a session**, and **Remove from Switcher...**, which removes the saved
 sign-in and leaves the Claude account alone. Then come **Refresh limits**,
@@ -396,8 +394,8 @@ rows are made first when the tray starts, one per saved account and three
 spare ones that stay hidden until an account is added. Checked on 2026-11-08
 by building the same menu with the same Win32 calls on a hidden desktop and
 saving what Windows drew there (`PrintWindow`): the ticks show on rows that
-have a submenu, and the percents line up. Guarding tests:
-`TestAccountRowTitleSaysWhereTheAccountIsOpen`,
+have a submenu, and the top menu stays as narrow as the longest account name.
+Guarding tests: `TestAccountRowTitleSaysWhereTheAccountIsOpen`,
 `TestAccountActionsFollowWhereTheAccountIsOpen`, `TestClaudeMenuState`.
 
 ### Verification of the third round

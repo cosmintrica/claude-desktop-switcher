@@ -5,7 +5,6 @@ package cmd
 import (
 	"testing"
 	"time"
-	"unicode/utf8"
 
 	"github.com/TinoA/claude-desktop-switcher/internal/account"
 )
@@ -30,7 +29,7 @@ func TestLimitsTextSaysHowMuchIsUsed(t *testing.T) {
 	}
 }
 
-func TestLimitNumbersSayHowMuchIsUsed(t *testing.T) {
+func TestLimitSummaryFitsOnOneRow(t *testing.T) {
 	now := time.Date(2026, 11, 8, 1, 15, 0, 0, time.Local)
 	soon := time.Date(2026, 11, 8, 4, 49, 0, 0, time.Local)
 	monday := time.Date(2026, 11, 9, 23, 59, 0, 0, time.Local)
@@ -41,27 +40,16 @@ func TestLimitNumbersSayHowMuchIsUsed(t *testing.T) {
 		usage account.Usage
 		want  string
 	}{
-		{usage(99, 51), "5h \u200799%     week \u200751%"},
-		{usage(0, 0), "5h \u2007\u20070%     week \u2007\u20070%"},
-		{usage(3, 100), "Mon 23:59     5h \u2007\u20073%     week 100%"},
-		{usage(100, 40), "04:49     5h 100%     week \u200740%"},
-		{usage(100, 100), "Mon 23:59     5h 100%     week 100%"},
-		{account.Usage{Week: account.Limit{Percent: 20, Known: true}}, "week \u200720%"},
+		{usage(99, 51), "5h 99% · week 51%"},
+		{usage(0, 0), "5h 0% · week 0%"},
+		{usage(3, 100), "5h 3% · week 100% (Mon 23:59)"},
+		{usage(100, 40), "5h 100% (04:49) · week 40%"},
+		{account.Usage{Week: account.Limit{Percent: 100, Known: true}}, "week 100%"},
 		{account.Usage{}, ""},
 	}
 	for _, test := range tests {
-		if got := limitNumbers(test.usage, now); got != test.want {
-			t.Fatalf("limitNumbers() = %q, want %q", got, test.want)
-		}
-	}
-}
-
-// Digits and figure spaces are equally wide in the menu font, so a padded
-// percent is as wide as a full one and the percents of all accounts line up.
-func TestPaddedPercentIsAsWideAsAFullOne(t *testing.T) {
-	for _, percent := range []float64{0, 4, 50, 99.6, 100} {
-		if got := utf8.RuneCountInString(paddedPercent(percent)); got != len("100%") {
-			t.Fatalf("paddedPercent(%v) = %q, want %d characters", percent, paddedPercent(percent), len("100%"))
+		if got := limitSummary(test.usage, now); got != test.want {
+			t.Fatalf("limitSummary() = %q, want %q", got, test.want)
 		}
 	}
 }
@@ -72,19 +60,17 @@ func TestAccountRowTitleSaysWhereTheAccountIsOpen(t *testing.T) {
 		label        string
 		place        accountPlace
 		otherAccount bool
-		limits       string
 		want         string
 	}{
-		{"closed", "office@accounts.test", placeClosed, false, "", "office@accounts.test"},
-		{"with limits", "office@accounts.test", placeClosed, false, "week \u200720%", "office@accounts.test\tweek \u200720%"},
-		{"main window", "office@accounts.test", placeMain, false, "", "office@accounts.test (main window)"},
-		{"separate window", "office@accounts.test", placeSeparate, false, "", "office@accounts.test (separate window)"},
-		{"its window has another account", "office@accounts.test", placeSeparate, true, "", "office@accounts.test (its window has another account)"},
-		{"ampersand", "R&D", placeClosed, false, "", "R&&D"},
+		{"closed", "office@accounts.test", placeClosed, false, "office@accounts.test"},
+		{"main window", "office@accounts.test", placeMain, false, "office@accounts.test (main window)"},
+		{"separate window", "office@accounts.test", placeSeparate, false, "office@accounts.test (separate window)"},
+		{"its window has another account", "office@accounts.test", placeSeparate, true, "office@accounts.test (its window has another account)"},
+		{"ampersand", "R&D", placeClosed, false, "R&&D"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := accountRowTitle(test.label, test.place, test.otherAccount, test.limits); got != test.want {
+			if got := accountRowTitle(test.label, test.place, test.otherAccount); got != test.want {
 				t.Fatalf("accountRowTitle() = %q, want %q", got, test.want)
 			}
 		})

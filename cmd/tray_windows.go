@@ -172,7 +172,7 @@ func (s *trayState) ready() {
 	go s.handleClaude()
 	go s.handleAquariumItem()
 	go s.handleStartAtLogin()
-	go s.handleRefreshLimits()
+	go s.handleRefreshLimits(s.limitsItem)
 	go s.handleBackupExport(s.exportPassword, false)
 	go s.handleBackupExport(s.exportLocal, true)
 	go s.handleBackupImport()

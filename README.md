@@ -43,7 +43,8 @@
 > session**, accounts opened in separate Claude windows with their own sessions,
 > a question before every switch, closing one Claude window at a time, an
 > aquarium above the clock with one fish per Claude window, one menu row per
-> account with how much of its 5-hour and weekly limits is used, **Start at login**, a fishbowl icon,
+> account and how much of its 5-hour and weekly limits is used in its submenu,
+> **Start at login**, a fishbowl icon,
 > and support for
 > Claude 3 and 4 from the Microsoft Store (their new data folder and log). The
 > download buttons below point to the original project's releases, which do not

@@ -11,9 +11,10 @@ import (
 )
 
 // Every saved account is a row at the top of the menu that says where it is
-// open and shows its limits; its submenu holds everything that can be done
-// with it. systray keeps rows in the order they were made, so the rows are
-// made before the rest of the menu, with spare ones for accounts added later.
+// open; its submenu starts with its limits and holds everything that can be
+// done with it. systray keeps rows in the order they were made, so the rows
+// are made before the rest of the menu, with spare ones for accounts added
+// later.
 const spareAccountRows = 3
 
 type accountPlace int
@@ -26,6 +27,7 @@ const (
 
 type accountRow struct {
 	item     *systray.MenuItem
+	limits   *systray.MenuItem
 	first    *systray.MenuItem
 	second   *systray.MenuItem
 	sessions *sessionMenu
@@ -37,11 +39,13 @@ type accountRow struct {
 
 func (s *trayState) newAccountRow() {
 	row := &accountRow{item: systray.AddMenuItem("", "")}
+	row.limits = row.item.AddSubMenuItem("", "Read the limits again")
 	row.first = row.item.AddSubMenuItem("", "")
 	row.second = row.item.AddSubMenuItem("", "")
 	row.sessions = newSessionMenu(row.item.AddSubMenuItem("Continue a session", "Open a recent Claude Code session of this account"))
 	row.remove = row.item.AddSubMenuItem("Remove from Switcher...", "Remove the saved sign-in of this account; the Claude account stays")
 	row.item.Hide()
+	go s.handleRefreshLimits(row.limits)
 	go s.watchAccountAction(row, row.first, true)
 	go s.watchAccountAction(row, row.second, false)
 	go s.watchRemoveAccount(row)
@@ -86,12 +90,14 @@ func (s *trayState) updateAccountRowsLocked(profiles []profile.Meta, active stri
 		case state.open:
 			place = placeSeparate
 		}
-		row.item.SetTitle(accountRowTitle(s.profileLabels[meta.Name], place, state.otherAccount, limitNumbers(s.limits[meta.Name], now)))
+		row.item.SetTitle(accountRowTitle(s.profileLabels[meta.Name], place, state.otherAccount))
 		if place == placeMain || place == placeSeparate && !state.otherAccount {
 			row.item.Check()
 		} else {
 			row.item.Uncheck()
 		}
+		summary := limitSummary(s.limits[meta.Name], now)
+		updateMenuRow(row.limits, summary != "", summary, true)
 		first, second := accountActions(place)
 		updateMenuRow(row.first, true, first, enabled)
 		updateMenuRow(row.second, true, second, enabled)
@@ -126,7 +132,7 @@ func profileListed(profiles []profile.Meta, name string) bool {
 	return false
 }
 
-func accountRowTitle(label string, place accountPlace, otherAccount bool, limits string) string {
+func accountRowTitle(label string, place accountPlace, otherAccount bool) string {
 	title := menuLabel(label)
 	switch {
 	case place == placeMain:
@@ -135,9 +141,6 @@ func accountRowTitle(label string, place accountPlace, otherAccount bool, limits
 		title += " (its window has another account)"
 	case place == placeSeparate:
 		title += " (separate window)"
-	}
-	if limits != "" {
-		title += "\t" + limits
 	}
 	return title
 }

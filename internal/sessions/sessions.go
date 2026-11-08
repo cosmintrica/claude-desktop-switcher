@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -267,7 +268,26 @@ type processRecord struct {
 	Status        string `json:"status"`
 	Entrypoint    string `json:"entrypoint"`
 	HostSessionID string `json:"hostSessionId"`
+	SessionID     string `json:"sessionId"`
 	Name          string `json:"name"`
+}
+
+// Busy says whether Claude Code process pid runs a turn for the session with
+// these ids, from the record Claude Code keeps for that process.
+func Busy(claudeDir string, pid int, hostSessionID, sessionID string) bool {
+	if pid <= 0 {
+		return false
+	}
+	data, err := readShared(filepath.Join(claudeDir, "sessions", strconv.Itoa(pid)+".json"))
+	if err != nil {
+		return false
+	}
+	var process processRecord
+	if json.Unmarshal(data, &process) != nil || process.Status != "busy" {
+		return false
+	}
+	return process.HostSessionID != "" && process.HostSessionID == hostSessionID ||
+		process.SessionID != "" && process.SessionID == sessionID
 }
 
 func Working(claudeDir, appData string) []string {

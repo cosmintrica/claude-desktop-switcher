@@ -409,6 +409,30 @@ have a submenu, and the top menu stays as narrow as the longest account name.
 Guarding tests: `TestAccountRowTitleSaysWhereTheAccountIsOpen`,
 `TestAccountActionsFollowWhereTheAccountIsOpen`, `TestClaudeMenuState`.
 
+### The session bridge in the tray
+
+claude-bridge is a separate local MCP server through which the Claude Code
+sessions of every account on one computer talk. It keeps one SQLite file,
+`~/.claude-bridge/bridge.db`, whose schema only ever grows. When that file
+exists, the tray shows a **Session bridge** row, for example
+`Session bridge: 5 sessions, 2 working`, and the icon's tooltip says the same.
+Its submenu lists each active session with its account and `working` or
+`idle`, then what waits for them: messages not read yet, files or tasks
+claimed, and handoffs nobody has taken. The rows are only read. A session is
+active while it checked in within the last 2 minutes, as the bridge counts it,
+and it is working while Claude Code's own record of its process
+(`~/.claude/sessions/<pid>.json`) says `busy`. The tray opens the database
+read-only every 10 seconds and never writes to it; without the bridge, the row
+and the tooltip stay as before. Guarding tests:
+`TestReadShowsTheActiveSessionsAndWhatWaitsForThem`,
+`TestReadSaysWhenTheBridgeIsNotInstalled`,
+`TestBusyReadsTheProcessRecordOfThatSession`,
+`TestBridgeSummaryCountsTheWorkingSessions`,
+`TestBridgeEntriesListTheSessionsThenWhatWaits`,
+`TestBridgeEntriesFitTheMenuSlots`. Checked on 2026-11-09 against the
+installed bridge (five active sessions, two working) and in the real menu
+drawn on a hidden desktop.
+
 ### Verification of the third round
 
 - gofmt, `go mod tidy -diff`, `go vet ./...` and all package tests pass;

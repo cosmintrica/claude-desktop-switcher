@@ -54,6 +54,10 @@ type trayState struct {
 	platform           platform.Platform
 	trayLock           *operationLock
 	accountRows        []*accountRow
+	bridgeItem         *systray.MenuItem
+	bridgeMenu         *sessionMenu
+	bridgeReadErr      string
+	tooltip            string
 	claude             *systray.MenuItem
 	aquariumItem       *systray.MenuItem
 	loginItem          *systray.MenuItem
@@ -137,7 +141,8 @@ func acquireTrayLock() (*operationLock, error) {
 func (s *trayState) ready() {
 	systray.SetIcon(trayIcon)
 	systray.SetTitle(ProductName)
-	systray.SetTooltip(ProductName + " - Claude Desktop account switcher")
+	systray.SetTooltip(defaultTooltip)
+	s.tooltip = defaultTooltip
 
 	profiles, _ := s.store.List()
 	for range len(profiles) + spareAccountRows {
@@ -146,6 +151,9 @@ func (s *trayState) ready() {
 	s.limitsItem = systray.AddMenuItem("Refresh limits", "Ask claude.ai for every account's 5-hour and weekly limits")
 	s.add = systray.AddMenuItem("Add account...", "Open Claude to sign in with another account")
 	systray.AddSeparator()
+	s.bridgeItem = systray.AddMenuItem("Session bridge", "The Claude Code sessions on the bridge and what waits for them")
+	s.bridgeMenu = newSessionMenu(s.bridgeItem)
+	s.bridgeItem.Hide()
 	s.update = systray.AddMenuItem("New version available", "Open the latest Claude Desktop Switcher release")
 	s.update.Hide()
 	s.claude = systray.AddMenuItem("Claude Desktop: Checking...", "Open or close Claude Desktop")
@@ -1258,6 +1266,7 @@ func (s *trayState) loadAccounts() {
 	s.syncSeparateWindows()
 	recent, recentRead := s.readRecentSessions(profiles, active)
 	separate := s.readSeparateWindows(profiles)
+	bridgeState, bridgeErr := s.readBridge()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1287,6 +1296,7 @@ func (s *trayState) loadAccounts() {
 	s.profileLabels = labels
 	s.updateAccountRowsLocked(profiles, active, running, installed, busy, separate, recent, recentRead)
 	s.updateClaudeMenuLocked(busy)
+	s.updateBridgeLocked(bridgeState, bridgeErr)
 	switch {
 	case !busy:
 		s.aquarium.setAccounts(s.aquariumAccountsLocked(profiles, active, running))

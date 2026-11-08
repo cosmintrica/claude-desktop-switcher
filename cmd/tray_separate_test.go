@@ -7,31 +7,6 @@ import (
 	"testing"
 )
 
-func TestSeparateMenuState(t *testing.T) {
-	tests := []struct {
-		name          string
-		inMainWindow  bool
-		state         separateWindowState
-		enabled       bool
-		wantTitle     string
-		wantClickable bool
-	}{
-		{"in the main window", true, separateWindowState{}, true, "office@accounts.test (main window)", false},
-		{"closed", false, separateWindowState{}, true, "office@accounts.test", true},
-		{"open", false, separateWindowState{open: true}, true, "✓ office@accounts.test (open)", true},
-		{"busy", false, separateWindowState{open: true}, false, "✓ office@accounts.test (open)", false},
-		{"other account", false, separateWindowState{open: true, otherAccount: true}, true, "✓ office@accounts.test (open) - another account is signed in there", true},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			title, clickable := separateMenuState("office@accounts.test", test.inMainWindow, test.state, test.enabled)
-			if title != test.wantTitle || clickable != test.wantClickable {
-				t.Fatalf("separateMenuState() = %q, %v; want %q, %v", title, clickable, test.wantTitle, test.wantClickable)
-			}
-		})
-	}
-}
-
 func TestSeparateWindowFolderSitsOutsideTheStorePackage(t *testing.T) {
 	local := t.TempDir()
 	t.Setenv("LOCALAPPDATA", local)

@@ -94,7 +94,7 @@ Claude Desktop keeps each account's Claude Code sessions apart
 opens only on the account that owns its record. Moving between accounts meant
 remembering where each piece of work lived.
 
-The tray has a new **Continue a session** menu. Under each saved account it
+Each account's row in the tray has a **Continue a session** submenu. It
 lists that account's 10 most recent sessions, grouped by project folder, with
 the time of their last activity. Clicking one opens it on its account:
 
@@ -192,12 +192,12 @@ found from the installed package each time (`GetPackagesByPackageFamily` and
 That folder sits outside the package's redirected Roaming folder, and Claude
 keeps its package identity. The first time, the window opens signed out and
 the user signs in with **Sign in with code**. Sign-ins and cookies are never
-copied between folders. The menu marks an open window, greys out the account
-in the main window, and warns when another account is signed in to a window.
+copied between folders. The account's row says when it is open in a separate
+window, and when another account is signed in to its window.
 Limits: `claude://` links (connector sign-ins, "Open in Claude") always reach
 the main window, there is no Cowork VM in a separate window, each window keeps
 its own copy of Claude Code, and each uses about 1.5-2 GB of memory. Guarding
-tests: `TestSeparateMenuState`, `TestSeparateWindowFolderSitsOutsideTheStorePackage`,
+tests: `TestAccountRowTitleSaysWhereTheAccountIsOpen`, `TestSeparateWindowFolderSitsOutsideTheStorePackage`,
 `TestManifestExecutableStaysInsideThePackage`,
 `TestClaudeExecutableFromTheInstalledPackage`.
 
@@ -246,9 +246,10 @@ While a window runs, what it saves reaches the main folder on every tray
 refresh (10 s) and right before a switch, so **Continue a session** lists it
 and the main window has it after the account moves there.
 
-Two windows must never hold the same account. Choosing an account in
-**Accounts** while it is signed in to a separate window offers to bring that
-window forward instead of switching the main window to it. **Continue a
+Two windows must never hold the same account. The row of an account signed in
+to a separate window offers **Show its window** instead of **Switch to this
+account**, and a switch that reaches such an account anyway offers to bring
+that window forward instead of switching the main window to it. **Continue a
 session** for such an account opens the session in its separate window, without
 closing the main one: the link is passed to `Claude.exe` started with that
 window's `--user-data-dir`, which hands it to the running window, since links
@@ -268,11 +269,11 @@ signed in to the main window, because separate windows keep running. Sidebar
 groups and starred sessions stay per window. Guarding tests:
 `TestMirrorAccount*`, `TestUnlinkRecordsReplacesALinkWithoutTouchingTheMainFolder`,
 `TestCopyWorktreeLeases*`, `TestWorkingLeavesOutSessionsOfAccountsInSeparateWindows`,
-`TestSeparateWindowInUsePrompt`, `TestContinueMenuTitleSaysWhereTheAccountIsOpen`.
+`TestSeparateWindowInUsePrompt`, `TestAccountRowTitleSaysWhereTheAccountIsOpen`.
 
 ### A switch always asks first
 
-A switch from **Accounts** and **Add account...** closed Claude Desktop at once
+A switch and **Add account...** closed Claude Desktop at once
 when no Claude Code session was working. On 2026-10-24 a build from before the
 Claude 3 fix looked for working sessions in the old, empty data folder, found
 none, and closed Claude without asking while sessions were working. Both
@@ -305,21 +306,24 @@ Windows has dropped its always-on-top flag, when the desktop has come over it,
 or when another program's always-on-top window covers it. Menus, tooltips,
 click-through overlays and Explorer's pop-ups stay in front. Each hide, return
 and comeback writes one line to the tray log, with the program that caused it.
-**Show aquarium** in the tray menu turns it off and on; the choice is kept in
+**Show aquarium** under **Settings and backup** turns it off and on; the choice is kept in
 `~/.claude-swap/aquarium-off`.
 
 ### Account limits
 
-Each account in **Accounts** shows how much of its claude.ai limits is used,
-for example `work@… · 5h 40% used · week 12% used`, so an account with room
-can be picked before a switch. A limit at 80 % or more also says when it
-starts over, `5h 92% used, resets 15:20`, and a used-up one says so:
-`week full until Mon 23:59`. In the aquarium, a fish's panel and the question
+Each account's row shows how much of its claude.ai limits is used, as numbers
+only, `5h  40%     week  12%`, so an account with room can be picked before a
+switch. Once a window is full, the time the account can be used again comes
+first: `04:49     5h 100%     week  40%`. Windows right-aligns what follows a
+tab in a menu row, and Segoe UI draws digits and figure spaces (U+2007) equally
+wide, so a percent padded with figure spaces to the width of `100%` lines up
+with the others. Bars made of characters were tried first and read worse. The
+tray log keeps the words, for example `5h 92% used, resets 15:20`. In the aquarium, a fish's panel and the question
 before a switch show the two limits as bars, and the accounts without a window
 show their percents in colour: teal below 70 %, amber below 90 %, red from 90 %.
 
 The limits are read when the tray starts, after each switch for the account it
-left (its usage moved while it was in use), and on **Accounts > Refresh
+left (its usage moved while it was in use), and on **Refresh
 limits**. For each saved account the switcher opens the claude.ai sign-in kept
 in its Cookies copy with Claude's own key from `Local State` (unwrapped with
 DPAPI for this Windows user, then AES-GCM) and asks claude.ai's usage endpoint
@@ -329,12 +333,13 @@ memory for the request; only the percents and reset times are kept, in memory
 too. Each read writes one line per account to the tray log. Guarding tests:
 `TestWindowsDecryptorOpensTheSavedSignIn`, `TestWindowsDecryptorRefusesAnotherKey`,
 `TestUsageReadsTheFiveHourAndWeeklyWindows`, `TestLimitStartsOverAtItsReset`,
-`TestFetchUsage*`. Checked live on 2026-11-07: all three saved accounts
+`TestFetchUsage*`, `TestLimitNumbersSayHowMuchIsUsed`,
+`TestPaddedPercentIsAsWideAsAFullOne`. Checked live on 2026-11-07: all three saved accounts
 answered with their 5-hour and weekly limits and reset times.
 
 ### Start at login
 
-**Start at login** in the tray menu starts the switcher when you sign in to
+**Start at login** under **Settings and backup** starts the switcher when you sign in to
 Windows. It writes a `Claude Desktop Switcher` value with this copy's path and
 `tray` under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. The tick
 follows what Windows will do: the installer's Startup shortcut counts as on,
@@ -358,18 +363,42 @@ the program; `go run scripts/icon-resource.go` writes them again from
 ### Close one Claude window at a time
 
 Claude's tray icons look the same for every window, so a white icon does not
-tell which account it belongs to. While a separate window is open, **Close
-Claude Desktop** becomes a submenu that names each window's account, for
-example `work@… (main window)` and `personal@… (separate window)`. A separate
-window closes the way the main one does: its window is asked to close, then its
-own process tree is ended, and the other windows stay open. Claude Code
-sessions working in that window are listed first, as for the main window.
+tell which account it belongs to. Each open account's row has **Close its
+window**, and while a separate window is open the main row reads **Close the
+main window**. A separate window closes the way the main one does: its window
+is asked to close, then its own process tree is ended, and the other windows
+stay open. Claude Code sessions working in that window are listed first, as for
+the main window.
 
-Meanwhile the plain **Close Claude Desktop** row stays hidden. systray puts a
-hidden row back whenever its title or state changes, and adding or removing a
-row of the main menu closes that menu if it is open, so the refresh every 10
-seconds closed an open tray menu. A row that stays hidden is now only hidden
-again.
+systray puts a hidden row back whenever its title or state changes, and adding
+or removing a row of the main menu closes that menu if it is open, so the
+refresh every 10 seconds once closed an open tray menu. A row that stays hidden
+is only hidden again, and rows of the main menu are added or removed only when
+an account comes or goes.
+
+### A simpler tray menu
+
+The menu had grown to 14 rows, and the same accounts were listed in four
+submenus (**Accounts**, **Continue a session**, **Open in a separate window**,
+**Delete account...**). Now each saved account is one row at the top, ticked
+while it is open, with where it is open, `(main window)` or
+`(separate window)`, and how much of its limits is used. Its submenu holds what can be done
+with it: **Switch to this account** and **Open in a separate window** while it
+is closed, **Show its window** and **Close its window** while it is open,
+**Continue a session**, and **Remove from Switcher...**, which removes the saved
+sign-in and leaves the Claude account alone. Then come **Refresh limits**,
+**Add account...**, **Open Claude Desktop** or **Close Claude Desktop**,
+**Settings and backup** (backups, the aquarium, start at login, the logs and
+the version) and **Exit**. Both mouse buttons open the same menu.
+
+systray keeps the rows of a menu in the order they were made, so the account
+rows are made first when the tray starts, one per saved account and three
+spare ones that stay hidden until an account is added. Checked on 2026-11-08
+by building the same menu with the same Win32 calls on a hidden desktop and
+saving what Windows drew there (`PrintWindow`): the ticks show on rows that
+have a submenu, and the percents line up. Guarding tests:
+`TestAccountRowTitleSaysWhereTheAccountIsOpen`,
+`TestAccountActionsFollowWhereTheAccountIsOpen`, `TestClaudeMenuState`.
 
 ### Verification of the third round
 
@@ -421,4 +450,5 @@ lines again. A separate window keeps reading the log in its own data folder.
 2. Keep each build next to the previous ones under its own file name, and point
    a desktop shortcut at it with the argument `tray`.
 3. Only one tray runs at a time. To change builds, choose **Exit** in the tray
-   menu, then start the other one. The menu's last line shows the running version.
+   menu, then start the other one. **Settings and backup** shows the running
+   version on its last line.

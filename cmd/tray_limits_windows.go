@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/TinoA/claude-desktop-switcher/internal/account"
@@ -98,12 +99,30 @@ func (s *trayState) switchProfile(name string, card *switchOverlay) error {
 	return err
 }
 
-func (s *trayState) limitsSuffixLocked(name string, now time.Time) string {
-	usage, ok := s.limits[name]
-	if !ok {
-		return ""
+// limitNumbers shows how much of each limit is used, the way claude.ai's Usage
+// page counts it. Menus right-align what follows the tab, and digits and
+// figure spaces are equally wide in the menu font, so the percents of all
+// accounts line up; once a window is full, the time the account can be used
+// again goes before them.
+func limitNumbers(usage account.Usage, now time.Time) string {
+	var parts []string
+	var full account.Limit
+	for _, row := range limitWindows(usage, now) {
+		parts = append(parts, row.name+" "+paddedPercent(row.limit.Percent))
+		if row.limit.Percent >= 100 && row.limit.Resets.After(full.Resets) {
+			full = row.limit
+		}
 	}
-	return "  ·  " + limitsText(usage, now)
+	if !full.Resets.IsZero() {
+		parts = append([]string{resetTime(full, now)}, parts...)
+	}
+	return strings.Join(parts, "     ")
+}
+
+// paddedPercent pads with figure spaces to the width of "100%".
+func paddedPercent(percent float64) string {
+	text := percentText(percent)
+	return strings.Repeat("\u2007", max(0, len("100%")-len(text))) + text
 }
 
 // limitsText reads like "5h 52% used  ·  week 11% used", with the time a

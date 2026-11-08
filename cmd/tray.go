@@ -1,4 +1,4 @@
-//go:build windows
+//go:build windows || darwin
 
 package cmd
 
@@ -6,12 +6,10 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	_ "embed"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -23,16 +21,12 @@ import (
 	"github.com/TinoA/claude-desktop-switcher/internal/sessions"
 	"github.com/getlantern/systray"
 	"github.com/spf13/cobra"
-	"golang.org/x/sys/windows"
 )
 
 const (
 	loginWindowTimeout           = 30 * time.Second
 	profileEmailDiscoveryTimeout = 60 * time.Second
 )
-
-//go:embed assets/windows-claude-swap-tray.ico
-var trayIcon []byte
 
 var (
 	errDeleteSessionUnknown      = errors.New("claude session cannot be verified")
@@ -101,6 +95,9 @@ type trayState struct {
 	activityLogErr     error
 }
 
+// trayStarted tells the menu-bar progress on macOS that the status item exists.
+var trayStarted atomic.Bool
+
 func runTray() (resultErr error) {
 	activityLog, activityLogErr := newActivityLogger()
 	logStartup := func(value string) {
@@ -148,8 +145,9 @@ func acquireTrayLock() (*operationLock, error) {
 }
 
 func (s *trayState) ready() {
-	systray.SetIcon(trayIcon)
-	systray.SetTitle(ProductName)
+	trayStarted.Store(true)
+	setTrayIcon()
+	systray.SetTitle(trayTitle)
 	systray.SetTooltip(ProductName + " - Claude Desktop account switcher")
 
 	s.root = systray.AddMenuItem("Accounts", "Switch account")
@@ -161,7 +159,10 @@ func (s *trayState) ready() {
 	systray.AddSeparator()
 	s.export = systray.AddMenuItem("Backup", "Save or restore accounts and sessions")
 	s.exportPassword = s.export.AddSubMenuItem("Password-protected...", "Create a portable, password-protected backup")
-	s.exportLocal = s.export.AddSubMenuItem("Without password...", "Protect the backup with this Windows account")
+	s.exportLocal = s.export.AddSubMenuItem("Without password...", "Protect the backup with this "+osAccountName+" account")
+	if !localBackupSupported {
+		s.exportLocal.Hide()
+	}
 	s.importer = systray.AddMenuItem("Import backup", "Automatically detect and restore a backup")
 	s.update = systray.AddMenuItem("New version available", "Open the latest Claude Desktop Switcher release")
 	s.update.Hide()
@@ -174,7 +175,7 @@ func (s *trayState) ready() {
 	wantAquarium := aquariumWanted()
 	s.aquariumItem = systray.AddMenuItemCheckbox("Show aquarium", "Show the aquarium above the clock: one fish per Claude window", wantAquarium)
 	startsNow, _ := startsAtLogin()
-	s.loginItem = systray.AddMenuItemCheckbox("Start at login", "Start "+ProductName+" when you sign in to Windows", startsNow)
+	s.loginItem = systray.AddMenuItemCheckbox("Start at login", "Start "+ProductName+" when you sign in to "+osAccountName, startsNow)
 	logs := systray.AddMenuItem("Open logs folder", "Open local diagnostic activity logs")
 	s.version = systray.AddMenuItem("Current version: "+displayVersion(Version), "Open the Claude Desktop Switcher GitHub repository")
 	quit := systray.AddMenuItem("Exit", "Close the tray icon")
@@ -216,7 +217,7 @@ func (s *trayState) handleLogs(item *systray.MenuItem) {
 			trayWarning("Logging unavailable", "The local logs folder is not available.")
 			continue
 		}
-		if err := exec.Command("explorer.exe", s.activityLog.Directory()).Start(); err != nil {
+		if err := openFolder(s.activityLog.Directory()); err != nil {
 			s.setStatus("Could not open logs folder: " + err.Error())
 			trayWarning("Could not open logs folder", err.Error())
 			continue
@@ -721,6 +722,9 @@ func (s *trayState) saveClosedSession(p platform.Platform) {
 }
 
 func (s *trayState) monitorUpdates() {
+	if !releaseDownloads {
+		return
+	}
 	timer := time.NewTimer(15 * time.Second)
 	defer timer.Stop()
 	<-timer.C
@@ -739,18 +743,6 @@ func (s *trayState) monitorUpdates() {
 
 func openLatestRelease() error {
 	return openURL(githubReleasePage)
-}
-
-func openURL(url string) error {
-	verb, err := windows.UTF16PtrFromString("open")
-	if err != nil {
-		return err
-	}
-	target, err := windows.UTF16PtrFromString(url)
-	if err != nil {
-		return err
-	}
-	return windows.ShellExecute(0, verb, target, nil, nil, windows.SW_SHOWNORMAL)
 }
 
 func (s *trayState) handleVersion() {

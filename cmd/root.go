@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 
 	"github.com/TinoA/claude-desktop-switcher/internal/platform"
 	"github.com/spf13/cobra"
@@ -22,14 +23,17 @@ var root = &cobra.Command{
 }
 
 func Execute() {
-	root.SetArgs(startupArgs(os.Args[1:], runtime.GOOS))
+	executable, _ := os.Executable()
+	root.SetArgs(startupArgs(os.Args[1:], runtime.GOOS, executable))
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
 	}
 }
 
-func startupArgs(args []string, goos string) []string {
-	if len(args) == 0 && goos == "windows" {
+// A double-click opens the tray: on Windows from any copy, on macOS from the
+// app bundle, while the bare binary stays a command-line tool.
+func startupArgs(args []string, goos, executable string) []string {
+	if len(args) == 0 && (goos == "windows" || goos == "darwin" && strings.Contains(executable, ".app/Contents/MacOS/")) {
 		return []string{"tray"}
 	}
 	return args

@@ -18,16 +18,20 @@ func TestStartupArgs(t *testing.T) {
 		name string
 		args []string
 		goos string
+		exe  string
 		want []string
 	}{
 		{name: "Windows double click opens tray", goos: "windows", want: []string{"tray"}},
 		{name: "Windows explicit command is preserved", args: []string{"list"}, goos: "windows", want: []string{"list"}},
+		{name: "macOS app bundle opens tray", goos: "darwin", exe: "/Applications/Claude Desktop Switcher.app/Contents/MacOS/claude-desktop-switcher", want: []string{"tray"}},
+		{name: "macOS app bundle keeps an explicit command", args: []string{"list"}, goos: "darwin", exe: "/Applications/Claude Desktop Switcher.app/Contents/MacOS/claude-desktop-switcher", want: []string{"list"}},
+		{name: "macOS bare binary keeps existing behavior", goos: "darwin", exe: "/usr/local/bin/claude-desktop-switcher"},
 		{name: "Other systems keep existing behavior", goos: "linux"},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := startupArgs(test.args, test.goos); !slices.Equal(got, test.want) {
+			if got := startupArgs(test.args, test.goos, test.exe); !slices.Equal(got, test.want) {
 				t.Fatalf("startupArgs(%v, %q) = %v, want %v", test.args, test.goos, got, test.want)
 			}
 		})

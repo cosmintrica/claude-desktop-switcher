@@ -480,7 +480,9 @@ func TestAddWorkflowStopsPersistenceRestartLoop(t *testing.T) {
 }
 
 func TestPendingAddPersistsRestartLimit(t *testing.T) {
-	t.Setenv("USERPROFILE", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOME", home)
 	want := pendingAdd{
 		Name:               "work",
 		Previous:           "personal",
@@ -751,7 +753,9 @@ func TestAddWorkflowUpdatesPendingDuplicateWithUsableLiveSession(t *testing.T) {
 }
 
 func TestOperationLockRejectsConcurrentOperation(t *testing.T) {
-	t.Setenv("USERPROFILE", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOME", home)
 	first, err := acquireOperationLock("test-operation")
 	if err != nil {
 		t.Fatal(err)
@@ -763,7 +767,9 @@ func TestOperationLockRejectsConcurrentOperation(t *testing.T) {
 }
 
 func TestOperationLockWaitsForPreviousOwnerToExit(t *testing.T) {
-	t.Setenv("USERPROFILE", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOME", home)
 	first, err := acquireOperationLock("test-operation")
 	if err != nil {
 		t.Fatal(err)
@@ -786,7 +792,9 @@ func TestOperationLockWaitsForPreviousOwnerToExit(t *testing.T) {
 }
 
 func TestOperationLockReleaseDoesNotRemoveReplacement(t *testing.T) {
-	t.Setenv("USERPROFILE", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOME", home)
 	first, err := acquireOperationLock("test-operation")
 	if err != nil {
 		t.Fatal(err)

@@ -19,6 +19,8 @@ const (
 	killMaxPolls         = 50 // 50 × 100ms = 5 second timeout before SIGKILL
 	killForceDelay       = 300 * time.Millisecond
 	claudeProcessPattern = `/Applications/Claude.app/Contents/MacOS/Claude|Claude Helper`
+	claudeMainPattern    = `^/Applications/Claude\.app/Contents/MacOS/Claude`
+	claudeBundleID       = "com.anthropic.claudefordesktop"
 )
 
 var errProcessAbsent = errors.New("process absent")
@@ -42,8 +44,10 @@ func (d *darwinPlatform) IsInstalled() bool {
 
 func (d *darwinPlatform) WaitForLoginWindow(ctx context.Context) error { return nil }
 
+// pgrep and pkill skip their own ancestors unless given -a, and a switcher
+// started from a terminal inside Claude has Claude among them.
 func (d *darwinPlatform) IsRunning() (bool, error) {
-	err := runProcessCommand("pgrep", "-f", claudeProcessPattern)
+	err := runProcessCommand("pgrep", "-a", "-f", claudeProcessPattern)
 	if errors.Is(err, errProcessAbsent) {
 		return false, nil
 	}
@@ -55,7 +59,8 @@ func (d *darwinPlatform) KillApp() error {
 }
 
 func (d *darwinPlatform) LaunchApp() error {
-	return exec.Command("open", "-a", appName).Run()
+	// Claude Code ships its own claude.app, so the bundle ID picks the desktop app.
+	return exec.Command("open", "-b", claudeBundleID).Run()
 }
 
 func runProcessCommand(name string, args ...string) error {
@@ -67,21 +72,23 @@ func runProcessCommand(name string, args ...string) error {
 }
 
 func stopClaudeProcesses(run func(string, ...string) error, sleep func(time.Duration), polls int) error {
-	if err := run("pgrep", "-f", claudeProcessPattern); errors.Is(err, errProcessAbsent) {
+	if err := run("pgrep", "-a", "-f", claudeProcessPattern); errors.Is(err, errProcessAbsent) {
 		return nil
 	} else if err != nil {
 		return err
 	}
-	_ = run("pkill", "-TERM", "-f", claudeProcessPattern)
+	// Only the main process gets SIGTERM: Electron then quits as with Cmd+Q, and
+	// its network service writes the cookies out before the helpers stop.
+	_ = run("pkill", "-a", "-TERM", "-f", claudeMainPattern)
 	for range polls {
 		sleep(killPollInterval)
-		if err := run("pgrep", "-f", claudeProcessPattern); errors.Is(err, errProcessAbsent) {
+		if err := run("pgrep", "-a", "-f", claudeProcessPattern); errors.Is(err, errProcessAbsent) {
 			return nil
 		}
 	}
-	_ = run("pkill", "-KILL", "-f", claudeProcessPattern)
+	_ = run("pkill", "-a", "-KILL", "-f", claudeProcessPattern)
 	sleep(killForceDelay)
-	if err := run("pgrep", "-f", claudeProcessPattern); errors.Is(err, errProcessAbsent) {
+	if err := run("pgrep", "-a", "-f", claudeProcessPattern); errors.Is(err, errProcessAbsent) {
 		return nil
 	}
 	return fmt.Errorf("processes for Claude Desktop remain after forced termination")

@@ -59,6 +59,21 @@
 
 The app installs for your Windows user and normally does not require administrator access. The installer can start it with Windows and adds a standard uninstaller.
 
+## On a Mac
+
+This fork also runs on macOS as a menu bar app. There is no download yet; build
+it from source:
+
+```bash
+brew install go
+scripts/build-macos-app.sh --install
+open ~/Applications/"Claude Desktop Switcher.app"
+```
+
+The fishbowl appears in the menu bar with the same menu as on Windows. What
+macOS does differently, and what is not there yet, is described in
+[Changes in this fork](docs/fork-changes.md#the-menu-bar-app-on-macos-2026-11-08).
+
 ## What it does
 
 - Keeps multiple Claude Desktop accounts available under names you recognize.

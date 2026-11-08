@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func TestStopClaudeProcessesTerminatesAppAndHelpers(t *testing.T) {
+func TestStopClaudeProcessesAsksTheAppToQuit(t *testing.T) {
 	var calls [][]string
 	runningChecks := 0
 	run := func(name string, args ...string) error {
@@ -25,7 +25,7 @@ func TestStopClaudeProcessesTerminatesAppAndHelpers(t *testing.T) {
 	if err := stopClaudeProcesses(run, func(time.Duration) {}, 2); err != nil {
 		t.Fatal(err)
 	}
-	wantFirst := []string{"pkill", "-TERM", "-f", claudeProcessPattern}
+	wantFirst := []string{"pkill", "-a", "-TERM", "-f", claudeMainPattern}
 	if !reflect.DeepEqual(calls[1], wantFirst) {
 		t.Fatalf("termination = %v, want %v", calls[1], wantFirst)
 	}

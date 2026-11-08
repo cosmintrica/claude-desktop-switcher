@@ -128,6 +128,12 @@ func LoginLogOffsetAt(appDataPath string) int64 {
 }
 
 func accountLogPath(appDataPath string) string {
+	// On macOS Claude writes its log to ~/Library/Logs/Claude, not to its data
+	// folder.
+	if home, err := os.UserHomeDir(); runtime.GOOS == "darwin" && err == nil &&
+		filepath.Clean(appDataPath) == filepath.Join(home, "Library", "Application Support", "Claude") {
+		return filepath.Join(home, "Library", "Logs", "Claude", "main.log")
+	}
 	local := os.Getenv("LOCALAPPDATA")
 	if runtime.GOOS == "windows" && local != "" && logsLiveInLocal(appDataPath, os.Getenv("APPDATA"), local) {
 		path := filepath.Join(local, "Claude", "Logs", "main.log")

@@ -78,7 +78,7 @@ func TestWindowsTrayIconIncludesCommonSizes(t *testing.T) {
 }
 
 func TestTrayIconIsTransparentAndUsesOrangeAsset(t *testing.T) {
-	source, err := os.ReadFile("cmd/tray_windows.go")
+	source, err := os.ReadFile("cmd/tray_os_windows.go")
 	if err != nil {
 		t.Fatal(err)
 	}

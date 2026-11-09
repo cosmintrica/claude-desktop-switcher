@@ -78,6 +78,7 @@ type trayState struct {
 	sessionReader      *sessions.Reader
 	sessionReadErr     string
 	separateSyncErr    string
+	signInWarningOpen  bool
 	workflow           *addWorkflow
 	claudeInstalled    bool
 	claudeRunning      bool
@@ -194,6 +195,7 @@ func (s *trayState) ready() {
 	go s.detectInitialLive()
 	go s.autoRefresh()
 	go s.monitorClaudeClose()
+	go s.watchBrowserSignIns()
 	go s.monitorUpdates()
 	if s.activityLogErr != nil {
 		logs.Disable()

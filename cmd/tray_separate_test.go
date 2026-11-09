@@ -37,7 +37,7 @@ func TestSeparateWindowPrompt(t *testing.T) {
 		t.Fatalf("title = %q", title)
 	}
 	want := "A second Claude Desktop window opens for office2@accounts.test, next to the main one.\n\n" +
-		"The first time it opens signed out: choose “Sign in with code” and sign in as office2@accounts.test.\n\n" +
+		"The first time it opens signed out: choose “Sign in with code” and sign in as office2@accounts.test. “Continue with Google” cannot finish in a separate window.\n\n" +
 		"It uses about 2 GB of memory while it is open."
 	if message != want {
 		t.Fatalf("message = %q\nwant %q", message, want)

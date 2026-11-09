@@ -191,13 +191,19 @@ found from the installed package each time (`GetPackagesByPackageFamily` and
 `AppxManifest.xml`), with `--user-data-dir=%LOCALAPPDATA%\Claude-Accounts\<profile>`.
 That folder sits outside the package's redirected Roaming folder, and Claude
 keeps its package identity. The first time, the window opens signed out and
-the user signs in with **Sign in with code**. Sign-ins and cookies are never
+the user signs in with **Sign in with code**. "Continue with Google" cannot
+finish there: Claude sends that sign-in to the browser, and the browser hands
+it to the main window, which ignores it. When a separate window's log says it
+sent its sign-in to the browser (`[Auth] Using system browser for: /login/`),
+the switcher says so within 2 seconds and points to **Sign in with code**; the
+first-open prompt says it too. Sign-ins and cookies are never
 copied between folders. The account's row says when it is open in a separate
 window, and when another account is signed in to its window.
 Limits: `claude://` links (connector sign-ins, "Open in Claude") always reach
 the main window, there is no Cowork VM in a separate window, each window keeps
 its own copy of Claude Code, and each uses about 1.5-2 GB of memory. Guarding
 tests: `TestAccountRowTitleSaysWhereTheAccountIsOpen`, `TestSeparateWindowFolderSitsOutsideTheStorePackage`,
+`TestBrowserSignInsFindTheWindowThatSentItsSignInToTheBrowser`, `TestBrowserSignInWarningSaysTheWayIn`,
 `TestManifestExecutableStaysInsideThePackage`,
 `TestClaudeExecutableFromTheInstalledPackage`.
 

@@ -301,6 +301,6 @@ func separateWindowInUsePrompt(label string) (string, string) {
 func separateWindowPrompt(label string) (string, string) {
 	return "Open " + label + " in a separate window?",
 		"A second Claude Desktop window opens for " + label + ", next to the main one.\n\n" +
-			"The first time it opens signed out: choose “Sign in with code” and sign in as " + label + ".\n\n" +
+			"The first time it opens signed out: choose “Sign in with code” and sign in as " + label + ". “Continue with Google” cannot finish in a separate window.\n\n" +
 			"It uses about 2 GB of memory while it is open."
 }

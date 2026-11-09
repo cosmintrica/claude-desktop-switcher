@@ -1,4 +1,4 @@
-//go:build windows
+//go:build windows || darwin
 
 package cmd
 
@@ -106,6 +106,25 @@ func (s *trayState) closeSeparateWindowNow(name string, quiet bool) {
 		return
 	}
 	s.refreshAccounts()
+}
+
+func (s *trayState) showAccountWindow(account aquariumAccount) {
+	if account.main {
+		if shower, ok := s.platform.(interface{ ShowMainWindow() error }); ok {
+			if err := shower.ShowMainWindow(); err != nil {
+				s.setStatus("Could not show the main window: " + err.Error())
+			}
+		}
+		return
+	}
+	runner, ok := s.platform.(platform.SeparateWindowRunner)
+	folder, err := separateWindowFolder(account.key)
+	if !ok || err != nil {
+		return
+	}
+	if err := runner.OpenSeparateWindow(folder, ""); err != nil {
+		s.setStatus("Could not show the separate window: " + err.Error())
+	}
 }
 
 func (s *trayState) openSeparateWindow(name string) {

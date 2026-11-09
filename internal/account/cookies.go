@@ -45,19 +45,29 @@ func NewCookieManager() (*CookieManager, error) {
 }
 
 // SessionKey reads and decrypts the sessionKey cookie from a Chromium Cookies
-// SQLite file. Uses the system sqlite3 CLI to avoid adding a CGO dependency.
+// SQLite file.
 func (cm *CookieManager) SessionKey(cookiesPath string) (string, error) {
+	value, err := cm.Cookie(cookiesPath, "sessionKey")
+	if err == nil && value == "" {
+		err = fmt.Errorf("sessionKey cookie not found in %s", cookiesPath)
+	}
+	return value, err
+}
+
+// Cookie reads and decrypts one claude.ai cookie, or "" when it is absent.
+// Uses the system sqlite3 CLI to avoid adding a CGO dependency.
+func (cm *CookieManager) Cookie(cookiesPath, name string) (string, error) {
 	out, err := exec.Command(
 		"sqlite3", cookiesPath,
 		`SELECT hex(encrypted_value) FROM cookies `+
-			`WHERE host_key LIKE '%.claude.ai' AND name='sessionKey' LIMIT 1`,
+			`WHERE host_key LIKE '%.claude.ai' AND name='`+name+`' LIMIT 1`,
 	).Output()
 	if err != nil {
 		return "", fmt.Errorf("sqlite3: %w", err)
 	}
 	hexVal := strings.TrimSpace(string(out))
 	if hexVal == "" {
-		return "", fmt.Errorf("sessionKey cookie not found in %s", cookiesPath)
+		return "", nil
 	}
 	blob, err := hex.DecodeString(hexVal)
 	if err != nil {

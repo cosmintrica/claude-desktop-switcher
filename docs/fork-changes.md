@@ -478,6 +478,75 @@ install too, with its data in the package or in `Claude-Data`, so the checks
 after a switch or a new sign-in see Claude's "logged in" and "logged out"
 lines again. A separate window keeps reading the log in its own data folder.
 
+## The menu bar app on macOS (2026-11-08)
+
+The tray now also runs on macOS as a menu bar app, built from the same code as
+the Windows tray. `tray_windows.go` became `tray.go`, and the sessions,
+separate-window, limits, activity log and update files that held no Windows
+calls build for both systems. What differs lives in `*_darwin.go` files:
+
+| Windows | macOS |
+|---------|-------|
+| Native message boxes and file dialogs | Standard macOS dialogs through `osascript`, with the app's icon |
+| The terminal progress card | The current step and percentage beside the icon in the menu bar |
+| Start at login in the Run key | A LaunchAgent in `~/Library/LaunchAgents` |
+| Limits opened with the key in `Local State` | Limits opened with Claude's key from the login keychain |
+| The aquarium above the clock | Not available yet; its menu item is hidden |
+| Separate Claude windows | Not available yet; the menu hides itself |
+| Backup without a password (Windows account) | Hidden; the password-protected backup works |
+| Update check against the Windows releases | Off, as those releases have no macOS build |
+
+Claude on macOS quits cleanly on SIGTERM, so closing it now sends SIGTERM to
+the main process only and waits for Claude to stop its helpers and write its
+cookies; force-closing everything stays the fallback after 5 seconds. Claude
+is started by its bundle ID, because Claude Code installs a `claude.app` of
+its own. `pgrep` and `pkill` get `-a`, since they skip their own ancestors and
+a switcher started from a terminal inside Claude has Claude among them.
+
+Claude on macOS writes its log to `~/Library/Logs/Claude/main.log`, not to its
+data folder. The checks after a switch or a new sign-in now read it there, so
+they see Claude's "logged in" and "logged out" lines instead of waiting for the
+fallback.
+
+The first time limits or an account's email are read, macOS asks whether
+`security` may use "Claude Safe Storage" from the login keychain. **Always
+Allow** keeps it from asking again.
+
+Five tests set only `USERPROFILE` and wrote `pending.json` and lock files into
+the real `~/.claude-swap` on macOS; they now set `HOME` too. CI runs vet, the
+race tests and the app build on `macos-15`.
+
+The account rows and the **Session bridge** menu from `main` build for macOS
+too (`tray_accounts.go`, `tray_bridge.go`). The limits row and **Show its
+window** moved out of the Windows aquarium, macOS shows the main window by
+opening Claude again, and an account's **Open in a separate window** stays
+hidden where the system has no separate windows. The bridge menu reads
+`~/.claude-bridge/bridge.db` as on Windows; claude-bridge 0.4.0 builds and
+passes its tests on macOS, and a database it wrote there reads correctly.
+
+### Build and run on a Mac
+
+```bash
+brew install go
+scripts/build-macos-app.sh --install
+open ~/Applications/"Claude Desktop Switcher.app"
+```
+
+The script builds a universal app (Apple silicon and Intel), signs it ad hoc
+for this Mac and, with `--install`, copies it to `~/Applications`. The bare
+binary inside the app stays a command-line tool when given a command, such as
+`claude-desktop-switcher list`.
+
+### Verification on macOS
+
+- `go vet` and `go test -race` pass on macOS 27.2 (Apple silicon); `go vet`
+  and `go build` for Windows amd64 and arm64 still pass.
+- The app started with a temporary home showed the fishbowl in the menu bar,
+  found Claude Desktop 4.23118 open and logged its state.
+- The dialogs' AppleScript is compiled by a test.
+- Not yet tried on a Mac: switching, adding and deleting an account, backups
+  and Start at login with real accounts.
+
 ## Running a local build
 
 1. Build with `.\scripts\project.ps1 -Task Build -Arch amd64 -Version <version>`,
@@ -487,3 +556,6 @@ lines again. A separate window keeps reading the log in its own data folder.
 3. Only one tray runs at a time. To change builds, choose **Exit** in the tray
    menu, then start the other one. **Settings and backup** shows the running
    version on its last line.
+
+On macOS, `scripts/build-macos-app.sh --install` does all three steps for
+`~/Applications/Claude Desktop Switcher.app`.

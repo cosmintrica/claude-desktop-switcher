@@ -1,4 +1,4 @@
-//go:build windows
+//go:build windows || darwin
 
 package cmd
 
@@ -94,7 +94,9 @@ func TestAccountActionsFollowWhereTheAccountIsOpen(t *testing.T) {
 }
 
 func TestTrayLockRejectsDuplicateImmediately(t *testing.T) {
-	t.Setenv("USERPROFILE", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOME", home)
 	first, err := acquireTrayLock()
 	if err != nil {
 		t.Fatal(err)

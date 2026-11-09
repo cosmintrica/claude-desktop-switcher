@@ -1,10 +1,11 @@
-//go:build windows
+//go:build windows || darwin
 
 package cmd
 
 import (
 	"time"
 
+	"github.com/TinoA/claude-desktop-switcher/internal/platform"
 	"github.com/TinoA/claude-desktop-switcher/internal/profile"
 	"github.com/TinoA/claude-desktop-switcher/internal/sessions"
 	"github.com/getlantern/systray"
@@ -99,8 +100,9 @@ func (s *trayState) updateAccountRowsLocked(profiles []profile.Meta, active stri
 		summary := limitSummary(s.limits[meta.Name], now)
 		updateMenuRow(row.limits, summary != "", summary, true)
 		first, second := accountActions(place)
+		_, separate := s.platform.(platform.SeparateWindowRunner)
 		updateMenuRow(row.first, true, first, enabled)
-		updateMenuRow(row.second, true, second, enabled)
+		updateMenuRow(row.second, separate || place != placeClosed, second, enabled)
 		if busy || place == placeMain {
 			row.remove.Disable()
 		} else {

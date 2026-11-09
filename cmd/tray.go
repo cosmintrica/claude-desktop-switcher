@@ -1,4 +1,4 @@
-//go:build windows
+//go:build windows || darwin
 
 package cmd
 
@@ -6,12 +6,10 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	_ "embed"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -23,16 +21,12 @@ import (
 	"github.com/TinoA/claude-desktop-switcher/internal/sessions"
 	"github.com/getlantern/systray"
 	"github.com/spf13/cobra"
-	"golang.org/x/sys/windows"
 )
 
 const (
 	loginWindowTimeout           = 30 * time.Second
 	profileEmailDiscoveryTimeout = 60 * time.Second
 )
-
-//go:embed assets/windows-claude-swap-tray.ico
-var trayIcon []byte
 
 var (
 	errDeleteSessionUnknown      = errors.New("claude session cannot be verified")
@@ -92,6 +86,9 @@ type trayState struct {
 	activityLogErr     error
 }
 
+// trayStarted tells the menu-bar progress on macOS that the status item exists.
+var trayStarted atomic.Bool
+
 func runTray() (resultErr error) {
 	activityLog, activityLogErr := newActivityLogger()
 	logStartup := func(value string) {
@@ -139,8 +136,9 @@ func acquireTrayLock() (*operationLock, error) {
 }
 
 func (s *trayState) ready() {
-	systray.SetIcon(trayIcon)
-	systray.SetTitle(ProductName)
+	trayStarted.Store(true)
+	setTrayIcon()
+	systray.SetTitle(trayTitle)
 	systray.SetTooltip(defaultTooltip)
 	s.tooltip = defaultTooltip
 
@@ -161,12 +159,15 @@ func (s *trayState) ready() {
 	settings := systray.AddMenuItem("Settings and backup", "Backups, the aquarium, start at login, logs and the version")
 	s.export = settings.AddSubMenuItem("Back up", "Save accounts and sessions to a file")
 	s.exportPassword = s.export.AddSubMenuItem("Password-protected...", "Create a portable, password-protected backup")
-	s.exportLocal = s.export.AddSubMenuItem("Without password...", "Protect the backup with this Windows account")
+	s.exportLocal = s.export.AddSubMenuItem("Without password...", "Protect the backup with this "+osAccountName+" account")
+	if !localBackupSupported {
+		s.exportLocal.Hide()
+	}
 	s.importer = settings.AddSubMenuItem("Restore a backup...", "Automatically detect and restore a backup")
 	wantAquarium := aquariumWanted()
 	s.aquariumItem = settings.AddSubMenuItemCheckbox("Show aquarium", "Show the aquarium above the clock: one fish per Claude window", wantAquarium)
 	startsNow, _ := startsAtLogin()
-	s.loginItem = settings.AddSubMenuItemCheckbox("Start at login", "Start "+ProductName+" when you sign in to Windows", startsNow)
+	s.loginItem = settings.AddSubMenuItemCheckbox("Start at login", "Start "+ProductName+" when you sign in to "+osAccountName, startsNow)
 	logs := settings.AddSubMenuItem("Open logs folder", "Open local diagnostic activity logs")
 	s.version = settings.AddSubMenuItem("Version "+displayVersion(Version), "Open the Claude Desktop Switcher GitHub repository")
 	quit := systray.AddMenuItem("Exit", "Close the tray icon")
@@ -207,7 +208,7 @@ func (s *trayState) handleLogs(item *systray.MenuItem) {
 			trayWarning("Logging unavailable", "The local logs folder is not available.")
 			continue
 		}
-		if err := exec.Command("explorer.exe", s.activityLog.Directory()).Start(); err != nil {
+		if err := openFolder(s.activityLog.Directory()); err != nil {
 			s.setStatus("Could not open logs folder: " + err.Error())
 			trayWarning("Could not open logs folder", err.Error())
 			continue
@@ -704,6 +705,9 @@ func (s *trayState) saveClosedSession(p platform.Platform) {
 }
 
 func (s *trayState) monitorUpdates() {
+	if !releaseDownloads {
+		return
+	}
 	timer := time.NewTimer(15 * time.Second)
 	defer timer.Stop()
 	<-timer.C
@@ -722,18 +726,6 @@ func (s *trayState) monitorUpdates() {
 
 func openLatestRelease() error {
 	return openURL(githubReleasePage)
-}
-
-func openURL(url string) error {
-	verb, err := windows.UTF16PtrFromString("open")
-	if err != nil {
-		return err
-	}
-	target, err := windows.UTF16PtrFromString(url)
-	if err != nil {
-		return err
-	}
-	return windows.ShellExecute(0, verb, target, nil, nil, windows.SW_SHOWNORMAL)
 }
 
 func (s *trayState) handleVersion() {

@@ -1,13 +1,17 @@
-//go:build windows
+//go:build windows || darwin
 
 package cmd
 
 import (
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
 func TestSeparateWindowFolderSitsOutsideTheStorePackage(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("separate windows run on Windows only")
+	}
 	local := t.TempDir()
 	t.Setenv("LOCALAPPDATA", local)
 	folder, err := separateWindowFolder("Main-account")

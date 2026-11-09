@@ -1,4 +1,4 @@
-//go:build windows
+//go:build windows || darwin
 
 package cmd
 
@@ -98,6 +98,24 @@ func (s *trayState) switchProfile(name string, card *switchOverlay) error {
 		go s.refreshLimits(previous)
 	}
 	return err
+}
+
+type limitWindow struct {
+	name  string
+	limit account.Limit
+}
+
+// limitWindows lists the limits claude.ai reported for an account, as they
+// stand now.
+func limitWindows(usage account.Usage, now time.Time) []limitWindow {
+	var rows []limitWindow
+	if limit := usage.FiveHour.At(now); limit.Known {
+		rows = append(rows, limitWindow{"5h", limit})
+	}
+	if limit := usage.Week.At(now); limit.Known {
+		rows = append(rows, limitWindow{"week", limit})
+	}
+	return rows
 }
 
 // limitSummary fits both limits on one row of the account's submenu, like

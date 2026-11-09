@@ -1193,3 +1193,19 @@ func entryNames(entries []os.DirEntry) []string {
 	}
 	return names
 }
+
+func TestMacAccountLogPathUsesLibraryLogs(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS log layout")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	appData := filepath.Join(home, "Library", "Application Support", "Claude")
+	if got, want := accountLogPath(appData), filepath.Join(home, "Library", "Logs", "Claude", "main.log"); got != want {
+		t.Fatalf("main window log = %q, want %q", got, want)
+	}
+	separate := t.TempDir()
+	if got, want := accountLogPath(separate), filepath.Join(separate, "logs", "main.log"); got != want {
+		t.Fatalf("separate window log = %q, want %q", got, want)
+	}
+}

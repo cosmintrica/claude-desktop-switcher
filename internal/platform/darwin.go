@@ -63,6 +63,10 @@ func (d *darwinPlatform) LaunchApp() error {
 	return exec.Command("open", "-b", claudeBundleID).Run()
 }
 
+// ShowMainWindow brings Claude to the front: opening a running app makes it
+// show its window again, also after the window was closed.
+func (d *darwinPlatform) ShowMainWindow() error { return d.LaunchApp() }
+
 func runProcessCommand(name string, args ...string) error {
 	err := exec.Command(name, args...).Run()
 	if _, ok := err.(*exec.ExitError); ok {

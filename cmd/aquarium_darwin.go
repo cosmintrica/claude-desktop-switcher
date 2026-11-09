@@ -9,7 +9,10 @@ import "github.com/TinoA/claude-desktop-switcher/internal/profile"
 
 type aquariumWindow struct{}
 
-type aquariumAccount struct{}
+type aquariumAccount struct {
+	key  string
+	main bool
+}
 
 func startAquarium(*trayState, bool) *aquariumWindow { return nil }
 

@@ -12,7 +12,6 @@ import (
 	"github.com/TinoA/claude-desktop-switcher/internal/platform"
 	"github.com/TinoA/claude-desktop-switcher/internal/profile"
 	"github.com/TinoA/claude-desktop-switcher/internal/sessions"
-	"github.com/getlantern/systray"
 )
 
 const (
@@ -67,134 +66,6 @@ func normalizedFolder(folder string) string {
 	return strings.ToLower(filepath.Clean(folder))
 }
 
-func (s *trayState) updateSeparateMenuLocked(profiles []profile.Meta, active string, running, enabled bool, states map[string]separateWindowState) {
-	if s.separateMenu == nil {
-		return
-	}
-	if _, ok := s.platform.(platform.SeparateWindowRunner); !ok || len(profiles) == 0 {
-		s.separateMenu.Hide()
-		return
-	}
-	s.separateMenu.Show()
-	seen := make(map[string]bool, len(profiles))
-	for _, meta := range profiles {
-		seen[meta.Name] = true
-		item, ok := s.separateItems[meta.Name]
-		if !ok {
-			item = s.separateMenu.AddSubMenuItem(menuLabel(s.profileLabels[meta.Name]), "Open this account in a separate Claude window")
-			s.separateItems[meta.Name] = item
-			stop := make(chan struct{})
-			s.separateStops[meta.Name] = stop
-			go s.watchSeparateItem(item, meta.Name, stop)
-		}
-		state, known := states[meta.Name]
-		if !known {
-			state = s.separateShown[meta.Name]
-		}
-		s.separateShown[meta.Name] = state
-		title, clickable := separateMenuState(s.profileLabels[meta.Name], running && active == meta.Name, state, enabled)
-		item.SetTitle(title)
-		if clickable {
-			item.Enable()
-		} else {
-			item.Disable()
-		}
-		item.Show()
-	}
-	for name := range s.separateItems {
-		if !seen[name] {
-			s.retireSeparateItemLocked(name)
-		}
-	}
-}
-
-func separateMenuState(label string, inMainWindow bool, state separateWindowState, enabled bool) (string, bool) {
-	title := menuLabel(label)
-	switch {
-	case inMainWindow:
-		return title + " (main window)", false
-	case state.open:
-		title = "✓ " + title + " (open)"
-	}
-	if state.otherAccount {
-		title += " - another account is signed in there"
-	}
-	return title, enabled
-}
-
-// Claude's tray icons look the same for every window, so while a separate
-// window is open, Close Claude Desktop becomes a submenu naming each window's
-// account.
-func (s *trayState) updateCloseMenuLocked(profiles []profile.Meta, active string, enabled bool) {
-	if s.closeMenu == nil {
-		return
-	}
-	s.separateOpen = false
-	open := make(map[string]bool, len(profiles))
-	for _, meta := range profiles {
-		if !s.separateShown[meta.Name].open {
-			continue
-		}
-		s.separateOpen = true
-		open[meta.Name] = true
-		item, ok := s.closeItems[meta.Name]
-		if !ok {
-			item = s.closeMenu.AddSubMenuItem("", "Close this account's separate Claude window")
-			s.closeItems[meta.Name] = item
-			go s.watchCloseItem(item, meta.Name)
-		}
-		item.SetTitle(windowTitle(s.profileLabels[meta.Name], false))
-		if enabled {
-			item.Enable()
-		} else {
-			item.Disable()
-		}
-		item.Show()
-	}
-	for name, item := range s.closeItems {
-		if !open[name] {
-			item.Hide()
-		}
-	}
-	s.closeMain.SetTitle(windowTitle(s.profileLabels[active], true))
-	if enabled {
-		s.closeMain.Enable()
-	} else {
-		s.closeMain.Disable()
-	}
-	if s.claudeRunning {
-		s.closeMain.Show()
-	} else {
-		s.closeMain.Hide()
-	}
-	if s.separateOpen {
-		s.closeMenu.Show()
-	} else {
-		s.closeMenu.Hide()
-	}
-	if claudeItemVisible(s.claudeRunning, s.separateOpen) {
-		s.claude.Show()
-	} else {
-		s.claude.Hide()
-	}
-}
-
-func windowTitle(label string, main bool) string {
-	switch {
-	case main && label == "":
-		return "Main window"
-	case main:
-		return menuLabel(label) + " (main window)"
-	}
-	return menuLabel(label) + " (separate window)"
-}
-
-func (s *trayState) watchCloseItem(item *systray.MenuItem, name string) {
-	for range item.ClickedCh {
-		s.closeSeparateWindow(name)
-	}
-}
-
 func (s *trayState) closeSeparateWindow(name string) {
 	folder, err := separateWindowFolder(name)
 	if err != nil {
@@ -237,40 +108,22 @@ func (s *trayState) closeSeparateWindowNow(name string, quiet bool) {
 	s.refreshAccounts()
 }
 
-func (s *trayState) disableSeparateItemsLocked() {
-	for _, item := range s.separateItems {
-		item.Disable()
-	}
-	for _, item := range s.closeItems {
-		item.Disable()
-	}
-	if s.closeMain != nil {
-		s.closeMain.Disable()
-	}
-}
-
-func (s *trayState) retireSeparateItemLocked(name string) {
-	item, ok := s.separateItems[name]
-	if !ok {
-		return
-	}
-	retireMenuItem(item)
-	stopMenuWatcher(s.separateStops, name)
-	delete(s.separateItems, name)
-	delete(s.separateShown, name)
-}
-
-func (s *trayState) watchSeparateItem(item *systray.MenuItem, name string, stop <-chan struct{}) {
-	for {
-		select {
-		case <-stop:
-			return
-		case _, ok := <-item.ClickedCh:
-			if !ok {
-				return
+func (s *trayState) showAccountWindow(account aquariumAccount) {
+	if account.main {
+		if shower, ok := s.platform.(interface{ ShowMainWindow() error }); ok {
+			if err := shower.ShowMainWindow(); err != nil {
+				s.setStatus("Could not show the main window: " + err.Error())
 			}
 		}
-		s.openSeparateWindow(name)
+		return
+	}
+	runner, ok := s.platform.(platform.SeparateWindowRunner)
+	folder, err := separateWindowFolder(account.key)
+	if !ok || err != nil {
+		return
+	}
+	if err := runner.OpenSeparateWindow(folder, ""); err != nil {
+		s.setStatus("Could not show the separate window: " + err.Error())
 	}
 }
 

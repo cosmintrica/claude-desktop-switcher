@@ -30,12 +30,10 @@ const (
 
 type sessionMenu struct {
 	item    *systray.MenuItem
-	title   string
 	slots   []*systray.MenuItem
 	visible []bool
 	enabled []bool
 	shown   []sessionEntry
-	stop    chan struct{}
 }
 
 type sessionEntry struct {
@@ -74,69 +72,18 @@ func (s *trayState) readRecentSessions(profiles []profile.Meta, active string) (
 	return recent, err == nil
 }
 
-func (s *trayState) updateSessionMenusLocked(profiles []profile.Meta, active string, running, enabled bool, recent map[string][]sessions.Session, read bool) {
-	if len(profiles) == 0 {
-		s.continueMenu.Hide()
-	} else {
-		s.continueMenu.Show()
-	}
-	now := time.Now()
-	seen := make(map[string]bool, len(profiles))
-	for _, meta := range profiles {
-		seen[meta.Name] = true
-		label := s.profileLabels[meta.Name]
-		menu := s.sessionMenus[meta.Name]
-		if menu == nil {
-			menu = s.newSessionMenuLocked(meta.Name, label)
-		}
-		title := continueMenuTitle(label, running && active == meta.Name, s.separateShown[meta.Name])
-		if title != menu.title {
-			menu.item.SetTitle(title)
-			menu.title = title
-		}
-		entries := menu.shown
-		switch {
-		case read:
-			entries = sessionMenuEntries(recent[meta.AccountUUIDHash], now)
-		case entries == nil:
-			entries = []sessionEntry{{title: "Reading sessions..."}}
-		}
-		menu.update(entries, enabled)
-	}
-	for name := range s.sessionMenus {
-		if !seen[name] {
-			s.retireSessionMenuLocked(name)
-		}
-	}
-}
-
-func continueMenuTitle(label string, inMainWindow bool, separate separateWindowState) string {
-	title := menuLabel(label)
-	switch {
-	case inMainWindow:
-		return "✓ " + title + " (in use)"
-	case separate.open && !separate.otherAccount:
-		return "✓ " + title + " (separate window)"
-	}
-	return title
-}
-
-func (s *trayState) newSessionMenuLocked(name, label string) *sessionMenu {
+func newSessionMenu(item *systray.MenuItem) *sessionMenu {
 	menu := &sessionMenu{
-		item:    s.continueMenu.AddSubMenuItem(menuLabel(label), "Recent Claude Code sessions of "+label),
-		title:   menuLabel(label),
+		item:    item,
 		slots:   make([]*systray.MenuItem, sessionMenuSlots),
 		visible: make([]bool, sessionMenuSlots),
 		enabled: make([]bool, sessionMenuSlots),
-		stop:    make(chan struct{}),
 	}
 	for index := range menu.slots {
-		menu.slots[index] = menu.item.AddSubMenuItem("", "")
+		menu.slots[index] = item.AddSubMenuItem("", "")
 		menu.visible[index] = true
 		menu.enabled[index] = true
-		go s.watchSessionSlot(menu, name, index)
 	}
-	s.sessionMenus[name] = menu
 	return menu
 }
 
@@ -169,44 +116,25 @@ func (m *sessionMenu) update(entries []sessionEntry, enabled bool) {
 	m.shown = entries
 }
 
-func (s *trayState) disableSessionSlotsLocked() {
-	for _, menu := range s.sessionMenus {
-		for index, slot := range menu.slots {
-			if menu.visible[index] && menu.enabled[index] {
-				slot.Disable()
-				menu.enabled[index] = false
-			}
+func (m *sessionMenu) disable() {
+	for index, slot := range m.slots {
+		if m.visible[index] && m.enabled[index] {
+			slot.Disable()
+			m.enabled[index] = false
 		}
 	}
 }
 
-func (s *trayState) retireSessionMenuLocked(name string) {
-	menu, ok := s.sessionMenus[name]
-	if !ok {
-		return
-	}
-	retireMenuItem(menu.item)
-	close(menu.stop)
-	delete(s.sessionMenus, name)
-}
-
-func (s *trayState) watchSessionSlot(menu *sessionMenu, name string, index int) {
-	for {
-		select {
-		case <-menu.stop:
-			return
-		case _, ok := <-menu.slots[index].ClickedCh:
-			if !ok {
-				return
-			}
-		}
+func (s *trayState) watchSessionSlot(row *accountRow, index int) {
+	for range row.sessions.slots[index].ClickedCh {
 		s.mu.Lock()
+		name := row.name
 		var session *sessions.Session
-		if index < len(menu.shown) {
-			session = menu.shown[index].session
+		if index < len(row.sessions.shown) {
+			session = row.sessions.shown[index].session
 		}
 		s.mu.Unlock()
-		if session != nil {
+		if name != "" && session != nil {
 			s.continueSession(name, *session)
 		}
 	}

@@ -42,8 +42,9 @@
 > v1.2.2 it adds the Claude Code sessions of each account with **Continue a
 > session**, accounts opened in separate Claude windows with their own sessions,
 > a question before every switch, closing one Claude window at a time, an
-> aquarium above the clock with one fish per Claude window, each account's
-> 5-hour and weekly limits before a switch, **Start at login**, a fishbowl icon,
+> aquarium above the clock with one fish per Claude window, one menu row per
+> account and how much of its 5-hour and weekly limits is used in its submenu,
+> **Start at login**, a fishbowl icon,
 > and support for
 > Claude 3 and 4 from the Microsoft Store (their new data folder and log). The
 > download buttons below point to the original project's releases, which do not
@@ -89,7 +90,7 @@ macOS does differently, and what is not there yet, is described in
 
 ### Switch accounts
 
-Right-click the tray icon, open **Accounts**, and select the account you want. Claude Desktop Switcher prepares the saved session and opens Claude Desktop again with that account. A small progress card stays in the middle of the screen while it works.
+Click the tray icon, point at the account you want, and choose **Switch to this account**. Claude Desktop Switcher prepares the saved session and opens Claude Desktop again with that account. A small progress card stays in the middle of the screen while it works.
 
 Switching closes Claude Desktop. Claude Desktop keeps running in the system tray when its window closes and offers no way for another program to make it quit with its own cleanup, so Claude Code sessions running inside Claude Desktop are stopped. They can be continued after Claude Desktop reopens.
 
@@ -99,16 +100,16 @@ Choose **Add account...**, give the profile a recognizable name, and sign in thr
 
 ### Delete a saved account
 
-Choose **Delete account...**, select a profile, and confirm. This removes only the Switcher's local copy. It does **not** delete the Anthropic account, and other saved accounts remain untouched.
+Point at the account, choose **Remove from Switcher...**, and confirm. This removes only the Switcher's local copy. It does **not** delete the Anthropic account, and other saved accounts remain untouched.
 
 ### Back up your accounts
 
-Open **Backup** and choose:
+Open **Settings and backup** > **Back up** and choose:
 
 - **Password-protected...** for a portable encrypted backup protected by a password you choose.
 - **Without password...** for a backup protected automatically with your current Windows account.
 
-Choose **Import backup** to restore a file. The app detects the protection type automatically and asks for a password only when one is required.
+Choose **Settings and backup** > **Restore a backup...** to restore a file. The app detects the protection type automatically and asks for a password only when one is required.
 
 For a complete backup, Claude Desktop may briefly close while the active profile is refreshed. If the session cannot be verified safely, the backup stops without replacing saved account data.
 

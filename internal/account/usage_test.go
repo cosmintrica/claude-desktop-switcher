@@ -2,8 +2,11 @@ package account
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -109,7 +112,62 @@ func TestFetchUsageFallsBackToTheSubscription(t *testing.T) {
 
 func TestFetchUsageReportsARefusal(t *testing.T) {
 	useFakeClaude(t, &fakeClaude{session: "other", bodies: map[string]string{"/api/organizations/org-last/usage": sampleUsage}})
-	if _, err := fetchUsage(strings.Repeat("s", 12), "org-last"); err == nil || !strings.Contains(err.Error(), "403") {
+	_, err := fetchUsage(strings.Repeat("s", 12), "org-last")
+	if err == nil || !strings.Contains(err.Error(), "403") || errors.Is(err, errBrowserCheck) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }
+
+// Seen live on 2026-11-08: five requests at once, and Cloudflare answered one
+// with 403, cf-mitigated: challenge and its "Just a moment..." page.
+func TestFetchUsageRecognizesTheBrowserCheck(t *testing.T) {
+	previous := defaultClient.Transport
+	defaultClient.Transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		header := http.Header{"Cf-Mitigated": []string{"challenge"}, "Content-Type": []string{"text/html; charset=UTF-8"}}
+		return &http.Response{StatusCode: http.StatusForbidden, Header: header, Body: io.NopCloser(strings.NewReader("<title>Just a moment...</title>")), Request: request}, nil
+	})
+	t.Cleanup(func() { defaultClient.Transport = previous })
+	if _, err := fetchUsage(strings.Repeat("s", 12), "org-last"); !errors.Is(err, errBrowserCheck) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestFetchEachAsksOneAtATimeAndOnceMoreAfterABrowserCheck(t *testing.T) {
+	tests := []struct {
+		name    string
+		checks  int
+		asked   []string
+		waits   int
+		checked bool
+	}{
+		{"no check", 0, []string{"a", "b", "c"}, 0, false},
+		{"one check, then an answer", 1, []string{"a", "b", "c", "b"}, 1, false},
+		{"checked twice", 2, []string{"a", "b", "c", "b"}, 1, true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			left := test.checks
+			var asked []string
+			fetch := func(path string) (Usage, error) {
+				asked = append(asked, path)
+				if path == "b" && left > 0 {
+					left--
+					return Usage{}, fmt.Errorf("%w (HTTP 403)", errBrowserCheck)
+				}
+				return Usage{Known: true}, nil
+			}
+			waits := 0
+			results := fetchEach(map[string]string{"c": "c", "a": "a", "b": "b"}, fetch, func() { waits++ })
+			if !slices.Equal(asked, test.asked) || waits != test.waits {
+				t.Fatalf("asked %v with %d waits, want %v with %d", asked, waits, test.asked, test.waits)
+			}
+			if got := errors.Is(results["b"].Err, errBrowserCheck); got != test.checked || !results["a"].Known || !results["c"].Known {
+				t.Fatalf("results = %+v", results)
+			}
+		})
 	}
 }

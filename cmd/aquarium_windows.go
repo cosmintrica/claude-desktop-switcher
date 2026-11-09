@@ -18,7 +18,6 @@ import (
 
 	"github.com/TinoA/claude-desktop-switcher/internal/account"
 	"github.com/TinoA/claude-desktop-switcher/internal/aquarium"
-	"github.com/TinoA/claude-desktop-switcher/internal/platform"
 	"github.com/TinoA/claude-desktop-switcher/internal/profile"
 	"github.com/TinoA/claude-desktop-switcher/internal/sessions"
 	"golang.org/x/sys/windows"
@@ -1014,24 +1013,6 @@ func (a *aquariumWindow) drawPanel(panel aquariumPanel, accounts []aquariumAccou
 	}
 }
 
-type limitWindow struct {
-	name  string
-	limit account.Limit
-}
-
-// limitWindows lists the limits claude.ai reported for an account, as they
-// stand now.
-func limitWindows(usage account.Usage, now time.Time) []limitWindow {
-	var rows []limitWindow
-	if limit := usage.FiveHour.At(now); limit.Known {
-		rows = append(rows, limitWindow{"5h", limit})
-	}
-	if limit := usage.Week.At(now); limit.Known {
-		rows = append(rows, limitWindow{"week", limit})
-	}
-	return rows
-}
-
 func limitColor(percent float64) color.NRGBA {
 	switch {
 	case percent >= 90:
@@ -1264,25 +1245,6 @@ func (s *trayState) aquariumAccountsLocked(profiles []profile.Meta, active strin
 		accounts = append(accounts, aquariumAccount{key: unknownMainKey, label: "Main window", palette: aquarium.Unknown, open: true, main: true, working: sessions.Working(claudeDir, appData)})
 	}
 	return accounts
-}
-
-func (s *trayState) showAccountWindow(account aquariumAccount) {
-	if account.main {
-		if shower, ok := s.platform.(interface{ ShowMainWindow() error }); ok {
-			if err := shower.ShowMainWindow(); err != nil {
-				s.setStatus("Could not show the main window: " + err.Error())
-			}
-		}
-		return
-	}
-	runner, ok := s.platform.(platform.SeparateWindowRunner)
-	folder, err := separateWindowFolder(account.key)
-	if !ok || err != nil {
-		return
-	}
-	if err := runner.OpenSeparateWindow(folder, ""); err != nil {
-		s.setStatus("Could not show the separate window: " + err.Error())
-	}
 }
 
 // closeAccountWindow closes an account's window after the aquarium asked.

@@ -2,6 +2,7 @@ package account
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,6 +16,10 @@ const (
 )
 
 var defaultClient = &http.Client{Timeout: 10 * time.Second}
+
+// errBrowserCheck is claude.ai's Cloudflare guard answering with its "Just a
+// moment..." browser check instead of the API.
+var errBrowserCheck = errors.New("claude.ai answered with a browser check")
 
 // orgResponse covers the known shapes of the /api/organizations response.
 type orgResponse struct {
@@ -77,6 +82,9 @@ func getJSON[T any](url, sessionKey string) (T, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		if resp.Header.Get("cf-mitigated") == "challenge" {
+			return zero, fmt.Errorf("%w (HTTP %d from %s)", errBrowserCheck, resp.StatusCode, url)
+		}
 		return zero, fmt.Errorf("HTTP %d from %s", resp.StatusCode, url)
 	}
 	body, err := io.ReadAll(resp.Body)

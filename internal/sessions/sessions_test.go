@@ -613,3 +613,37 @@ func TestWorkingWithoutRunningSessions(t *testing.T) {
 		t.Fatalf("working sessions = %q", got)
 	}
 }
+
+func TestBusyReadsTheProcessRecordOfThatSession(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "sessions"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	records := map[string]string{
+		"7.json": `{"pid": 7, "status": "busy", "hostSessionId": "local_x", "sessionId": "cli-x"}`,
+		"8.json": `{"pid": 8, "status": "idle", "hostSessionId": "local_y"}`,
+	}
+	for name, body := range records {
+		if err := os.WriteFile(filepath.Join(dir, "sessions", name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tests := []struct {
+		pid      int
+		host, id string
+		want     bool
+	}{
+		{7, "local_x", "", true},
+		{7, "", "cli-x", true},
+		{7, "local_other", "cli-other", false},
+		{7, "", "", false},
+		{8, "local_y", "", false},
+		{9, "local_x", "", false},
+		{0, "local_x", "", false},
+	}
+	for _, test := range tests {
+		if got := Busy(dir, test.pid, test.host, test.id); got != test.want {
+			t.Fatalf("Busy(%d, %q, %q) = %v, want %v", test.pid, test.host, test.id, got, test.want)
+		}
+	}
+}

@@ -7,9 +7,11 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/TinoA/claude-desktop-switcher/internal/account"
+	"github.com/getlantern/systray"
 )
 
 // Account limits are claude.ai's 5-hour and weekly usage of each saved
@@ -81,8 +83,8 @@ func (s *trayState) refreshLimits(names ...string) {
 	s.refreshAccounts()
 }
 
-func (s *trayState) handleRefreshLimits() {
-	for range s.limitsItem.ClickedCh {
+func (s *trayState) handleRefreshLimits(item *systray.MenuItem) {
+	for range item.ClickedCh {
 		go s.refreshLimits()
 	}
 }
@@ -98,12 +100,37 @@ func (s *trayState) switchProfile(name string, card *switchOverlay) error {
 	return err
 }
 
-func (s *trayState) limitsSuffixLocked(name string, now time.Time) string {
-	usage, ok := s.limits[name]
-	if !ok {
-		return ""
+type limitWindow struct {
+	name  string
+	limit account.Limit
+}
+
+// limitWindows lists the limits claude.ai reported for an account, as they
+// stand now.
+func limitWindows(usage account.Usage, now time.Time) []limitWindow {
+	var rows []limitWindow
+	if limit := usage.FiveHour.At(now); limit.Known {
+		rows = append(rows, limitWindow{"5h", limit})
 	}
-	return "  ·  " + limitsText(usage, now)
+	if limit := usage.Week.At(now); limit.Known {
+		rows = append(rows, limitWindow{"week", limit})
+	}
+	return rows
+}
+
+// limitSummary fits both limits on one row of the account's submenu, like
+// "5h 10% · week 17%", with the time a full window starts over:
+// "week 100% (Tue 00:00)".
+func limitSummary(usage account.Usage, now time.Time) string {
+	var parts []string
+	for _, row := range limitWindows(usage, now) {
+		part := row.name + " " + percentText(row.limit.Percent)
+		if row.limit.Percent >= 100 && !row.limit.Resets.IsZero() {
+			part += " (" + resetTime(row.limit, now) + ")"
+		}
+		parts = append(parts, part)
+	}
+	return strings.Join(parts, " · ")
 }
 
 // limitsText reads like "5h 52% used  ·  week 11% used", with the time a

@@ -124,7 +124,7 @@ func (s *trayState) openSeparateWindowWith(name string, quiet bool) {
 		return
 	}
 	label := s.cachedProfileDisplayName(name)
-	if running, active := s.claudeStateSnapshot(); running && active == name {
+	if running, active := s.claudeStateSnapshot(); running && (active == name || s.mainWindowHolds(name)) {
 		trayWarning(ProductName, label+" is open in the main Claude window.")
 		return
 	}
@@ -177,29 +177,80 @@ func (s *trayState) openSeparateWindowWith(name string, quiet bool) {
 // signed in to one of them must not open in the main window too: both windows
 // would change the same sessions.
 func (s *trayState) separateWindowWith(name string) (string, bool) {
+	profiles, err := s.store.List()
+	if err != nil {
+		return "", false
+	}
+	return s.separateWindowHolding(profiles, profileAccount(profiles, name))
+}
+
+func (s *trayState) separateWindowHolding(profiles []profile.Meta, account string) (string, bool) {
 	runner, ok := s.platform.(platform.SeparateWindowRunner)
-	if !ok {
+	if !ok || account == "" {
 		return "", false
 	}
 	open, err := runner.SeparateWindows()
 	if err != nil || len(open) == 0 {
 		return "", false
 	}
-	profiles, err := s.store.List()
-	if err != nil {
-		return "", false
+	var folders []string
+	for _, meta := range profiles {
+		if folder, err := separateWindowFolder(meta.Name); err == nil {
+			folders = append(folders, folder)
+		}
 	}
-	account := profileAccount(profiles, name)
+	return folderHolding(folders, open, account)
+}
+
+// Each window's own sign-in decides which account it holds, not the profile
+// the switcher believes is active: that one may be unverified.
+func folderHolding(folders []string, open map[string]bool, account string) (string, bool) {
 	if account == "" {
 		return "", false
 	}
-	for _, meta := range profiles {
-		folder, err := separateWindowFolder(meta.Name)
-		if err == nil && open[normalizedFolder(folder)] && profile.AccountUUIDHashAt(folder) == account {
+	for _, folder := range folders {
+		if open[normalizedFolder(folder)] && profile.AccountUUIDHashAt(folder) == account {
 			return folder, true
 		}
 	}
 	return "", false
+}
+
+func (s *trayState) mainWindowHolds(name string) bool {
+	appData, err := s.platform.AppDataPath()
+	if err != nil {
+		return false
+	}
+	profiles, err := s.store.List()
+	if err != nil {
+		return false
+	}
+	account := profileAccount(profiles, name)
+	return account != "" && profile.AccountUUIDHashAt(appData) == account
+}
+
+// separateWindowForMain finds the separate window holding the account Claude
+// would open in the main window: the current profile's, else the one signed in
+// to the main folder last.
+func (s *trayState) separateWindowForMain() (string, string, bool) {
+	profiles, err := s.store.List()
+	if err != nil {
+		return "", "", false
+	}
+	current, _ := s.store.Current()
+	account := profileAccount(profiles, current)
+	if account == "" {
+		appData, err := s.platform.AppDataPath()
+		if err != nil {
+			return "", "", false
+		}
+		account = profile.AccountUUIDHashAt(appData)
+	}
+	folder, ok := s.separateWindowHolding(profiles, account)
+	if !ok {
+		return "", "", false
+	}
+	return folder, s.cachedProfileDisplayName(filepath.Base(folder)), true
 }
 
 // Claude refuses to save its records through a link, so a separate window
@@ -222,7 +273,7 @@ func (s *trayState) prepareSeparateWindow(name, folder string) error {
 	if err := sessions.UnlinkRecords(folder); err != nil {
 		return err
 	}
-	if account != profile.AccountUUIDHashAt(appData) {
+	if running, _ := s.claudeStateSnapshot(); !running || account != profile.AccountUUIDHashAt(appData) {
 		if _, err := sessions.MirrorAccount(folder, appData, account); err != nil {
 			return err
 		}
@@ -235,7 +286,9 @@ func (s *trayState) prepareSeparateWindow(name, folder string) error {
 
 // What a separate window saves is copied to the main folder on every refresh,
 // so Continue a session lists it and the main window has it after a switch.
-// The account signed in to the main window is left to that window.
+// The account signed in to the main window is left to that window while it
+// runs; while it is closed, its folder gets that account's work too, so it
+// opens with everything.
 func (s *trayState) syncSeparateWindows() {
 	if _, ok := s.platform.(platform.SeparateWindowRunner); !ok || s.backgroundReadsPaused() {
 		return
@@ -249,6 +302,7 @@ func (s *trayState) syncSeparateWindows() {
 		return
 	}
 	mainAccount := profile.AccountUUIDHashAt(appData)
+	mainRunning, _ := s.claudeStateSnapshot()
 	message := ""
 	for _, meta := range profiles {
 		folder, err := separateWindowFolder(meta.Name)
@@ -256,7 +310,7 @@ func (s *trayState) syncSeparateWindows() {
 			continue
 		}
 		account := profile.AccountUUIDHashAt(folder)
-		if account == "" || account == mainAccount {
+		if account == "" || (mainRunning && account == mainAccount) {
 			continue
 		}
 		if _, err := sessions.MirrorAccount(folder, appData, account); err != nil && !errors.Is(err, sessions.ErrLinked) {

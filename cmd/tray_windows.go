@@ -298,6 +298,11 @@ func (s *trayState) openOrCloseClaude() {
 			!confirmStoppingWork("Close Claude Desktop?", "You can continue these sessions after Claude Desktop opens again.", "Close anyway?", working) {
 			return
 		}
+	} else if folder, label, ok := s.separateWindowForMain(); ok {
+		s.offerSeparateWindow(label, folder)
+		return
+	} else {
+		s.syncSeparateWindows()
 	}
 	if !s.beginSwitch() {
 		s.setStatus("Wait for the current operation to finish")

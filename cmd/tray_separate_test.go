@@ -3,8 +3,11 @@
 package cmd
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/TinoA/claude-desktop-switcher/internal/profile"
 )
 
 func TestSeparateWindowFolderSitsOutsideTheStorePackage(t *testing.T) {
@@ -16,6 +19,27 @@ func TestSeparateWindowFolderSitsOutsideTheStorePackage(t *testing.T) {
 	}
 	if want := filepath.Join(local, "Claude-Accounts", "Main-account"); folder != want {
 		t.Fatalf("folder = %q, want %q", folder, want)
+	}
+}
+
+func TestFolderHoldingGoesByTheWindowsOwnSignIn(t *testing.T) {
+	closed, office, private := t.TempDir(), t.TempDir(), t.TempDir()
+	for folder, uuid := range map[string]string{closed: "uuid-private", office: "uuid-office", private: "uuid-private"} {
+		if err := os.WriteFile(filepath.Join(folder, "config.json"), []byte(`{"lastKnownAccountUuid":"`+uuid+`"}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	folders := []string{closed, office, private}
+	open := map[string]bool{normalizedFolder(office): true, normalizedFolder(private): true}
+	account := profile.AccountUUIDHash("uuid-private")
+	if folder, ok := folderHolding(folders, open, account); !ok || folder != private {
+		t.Fatalf("folder = %q, %v, want the open window signed in to the account", folder, ok)
+	}
+	if folder, ok := folderHolding(folders, open, profile.AccountUUIDHash("uuid-other")); ok {
+		t.Fatalf("folder = %q for an account no open window holds", folder)
+	}
+	if folder, ok := folderHolding(folders, open, ""); ok {
+		t.Fatalf("folder = %q for an unknown account", folder)
 	}
 }
 

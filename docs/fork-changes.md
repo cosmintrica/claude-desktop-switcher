@@ -260,7 +260,18 @@ session** for such an account opens the session in its separate window, without
 closing the main one: the link is passed to `Claude.exe` started with that
 window's `--user-data-dir`, which hands it to the running window, since links
 opened through Windows always reach the main window. The menu marks that
-account "(separate window)".
+account "(separate window)". Which account a window holds comes from that
+window's own data folder (`lastKnownAccountUuid` in its `config.json`), not
+from the profile the switcher believes is active, which can stay unverified:
+**Open in a separate window** refuses the account the running main window is
+signed in to, and **Open Claude Desktop** offers to bring the separate window
+forward when the account it would open is in one. Before this, an unverified
+main window let the same account open in both; each window then kept sessions
+the other never saw, and when a Claude update closed both, the main window
+showed only its own. While the main window is closed, the sessions of its
+account's separate window are copied to the main folder too (every refresh and
+right before **Open Claude Desktop**), so it opens with everything. Guarding
+test: `TestFolderHoldingGoesByTheWindowsOwnSignIn`.
 
 Claude reserves each worktree folder for one session in `git-worktrees.json`,
 one file per data folder, and gives a session whose reservation is missing a

@@ -264,7 +264,9 @@ account "(separate window)". Which account a window holds comes from that
 window's own data folder (`lastKnownAccountUuid` in its `config.json`), not
 from the profile the switcher believes is active, which can stay unverified:
 **Open in a separate window** refuses the account the running main window is
-signed in to, and **Open Claude Desktop** offers to bring the separate window
+signed in to; while the main window is closed, that account opens in the main
+window instead (as **Switch to this account** does), because its sidebar
+groups and pins live only in the main window's settings. And **Open Claude Desktop** offers to bring the separate window
 forward when the account it would open is in one. Before this, an unverified
 main window let the same account open in both; each window then kept sessions
 the other never saw, and when a Claude update closed both, the main window

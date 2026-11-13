@@ -124,8 +124,13 @@ func (s *trayState) openSeparateWindowWith(name string, quiet bool) {
 		return
 	}
 	label := s.cachedProfileDisplayName(name)
-	if running, active := s.claudeStateSnapshot(); running && (active == name || s.mainWindowHolds(name)) {
+	running, active := s.claudeStateSnapshot()
+	switch separateOpenChoice(running, active == name, s.mainWindowHolds(name)) {
+	case refuseInMain:
 		trayWarning(ProductName, label+" is open in the main Claude window.")
+		return
+	case openInMain:
+		s.switchTo(name, false)
 		return
 	}
 	folder, err := separateWindowFolder(name)
@@ -214,6 +219,26 @@ func folderHolding(folders []string, open map[string]bool, account string) (stri
 		}
 	}
 	return "", false
+}
+
+type separateOpen int
+
+const (
+	openSeparately separateOpen = iota
+	refuseInMain
+	openInMain
+)
+
+// The account the main folder belongs to opens in the main window, where its
+// sidebar groups and pins live: a separate window would show it without them.
+func separateOpenChoice(running, active, mainHolds bool) separateOpen {
+	switch {
+	case running && (active || mainHolds):
+		return refuseInMain
+	case !running && mainHolds:
+		return openInMain
+	}
+	return openSeparately
 }
 
 func (s *trayState) mainWindowHolds(name string) bool {

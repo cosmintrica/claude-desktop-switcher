@@ -43,6 +43,25 @@ func TestFolderHoldingGoesByTheWindowsOwnSignIn(t *testing.T) {
 	}
 }
 
+func TestTheMainWindowsAccountOpensInTheMainWindow(t *testing.T) {
+	tests := []struct {
+		name                   string
+		running, active, holds bool
+		want                   separateOpen
+	}{
+		{"another account, main window open", true, false, false, openSeparately},
+		{"another account, main window closed", false, false, false, openSeparately},
+		{"the active account, main window open", true, true, false, refuseInMain},
+		{"its account, main window open but unverified", true, false, true, refuseInMain},
+		{"its account, main window closed", false, false, true, openInMain},
+	}
+	for _, test := range tests {
+		if got := separateOpenChoice(test.running, test.active, test.holds); got != test.want {
+			t.Errorf("%s: separateOpenChoice = %v, want %v", test.name, got, test.want)
+		}
+	}
+}
+
 func TestSeparateWindowInUsePrompt(t *testing.T) {
 	title, message := separateWindowInUsePrompt("private@accounts.test")
 	if title != "private@accounts.test is open in a separate window" {
